@@ -4,14 +4,18 @@ A peer joins a group by introducing itself to one member that is already in.
 Everything after that first contact is the fabric's own business: the signed
 self-advertisement spreads on the `peers` stream, membership is learned by
 gossip, the lost-member retry re-dials what it last knew, and seeds are a way
-in rather than a dependency. The first contact is the part the fabric cannot
+in rather than a dependency. 
+
+The first contact is the part the fabric cannot
 do for itself, and the core answers it with a static list of `host:port`
 strings per group and an opt-in UDP multicast datagram on one LAN segment. An
 enterprise network has more answers than that, already in place for everything
 else it runs: DNS names with several addresses, SRV records with priorities,
 DNS-SD under a domain, a well-known name under the search domain DHCP handed
 out, a document at a well-known HTTPS URI, the A and SRV records Kubernetes
-publishes for every pod of a headless service. This project makes those
+publishes for every pod of a headless service. 
+
+This project makes those
 answers first-class: locators for each of them over a small `DnsResolver`
 SPI, the beacon document they can point at, and the Spring Boot and Micronaut
 wiring that binds `agentspaces.bootstrap.*` and composes each group's
@@ -75,7 +79,7 @@ the keys the fleet-wide block set. A misconfigured block (an unknown name in
 `order`, `accept-group-id-from` naming a plain-DNS locator without
 `insecure-group-id: true`) fails the context at start, naming the property.
 
-## Spring Boot: the bean seams
+## Spring Boot: the bean interfaces
 
 Every step of "how this peer finds its group" is a bean the application may
 define; the defaults are `@ConditionalOnMissingBean`. The core starter
