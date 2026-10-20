@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Copyright 2026 Bad Monkey, Inc.
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+      https://www.apache.org/licenses/LICENSE-2.0
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>ai.badmonkey.agentspaces</groupId>
+    <artifactId>agentspaces-bootstrap-parent</artifactId>
+    <version>0.4.0</version>
+  </parent>
+  <artifactId>agentspaces-bootstrap</artifactId>
+  <name>AgentSpaces Bootstrap</name>
+  <description>
+    Locators that find a beacon through the enterprise's own directory: a DNS
+    name with several addresses, SRV, DNS-SD under the network's domain, a TXT
+    pointer, a well-known HTTPS beacon document, a Kubernetes headless service;
+    the DnsResolver SPI over the JDK's JNDI provider; the beacon document with
+    its signature. JDK-only beyond the AgentSpaces API.
+  </description>
+  <dependencies>
+    <dependency>
+      <groupId>ai.badmonkey.agentspaces</groupId>
+      <artifactId>agentspaces-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>ai.badmonkey.agentspaces</groupId>
+      <artifactId>agentspaces-common</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>ai.badmonkey.agentspaces</groupId>
+      <artifactId>agentspaces-identity</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>ai.badmonkey.agentspaces</groupId>
+      <artifactId>agentspaces-peering</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>no-framework</id>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <bannedDependencies>
+                  <excludes>
+                    <exclude>io.micronaut*</exclude>
+                    <exclude>org.springframework*</exclude>
+                    <exclude>dnsjava:*</exclude>
+                  </excludes>
+                </bannedDependencies>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

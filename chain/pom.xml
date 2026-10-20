@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Copyright 2026 Bad Monkey, Inc.
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+      https://www.apache.org/licenses/LICENSE-2.0
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>ai.badmonkey.agentspaces</groupId>
+    <artifactId>agentspaces-bootstrap-parent</artifactId>
+    <version>0.4.0</version>
+  </parent>
+  <artifactId>agentspaces-bootstrap-chain</artifactId>
+  <name>AgentSpaces Bootstrap :: Chain</name>
+  <description>
+    The composition both hosts share: agentspaces.bootstrap.* settings, the
+    configured seeds, and the application's locator beans into one
+    BootstrapChain per group through the core's BootstrapChainFactory seam;
+    the nested-map binding of the same keys for hosts that hold their
+    configuration as a tree. Framework-free.
+  </description>
+  <dependencies>
+    <dependency>
+      <groupId>ai.badmonkey.agentspaces</groupId>
+      <artifactId>agentspaces-bootstrap</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>ai.badmonkey.agentspaces</groupId>
+      <artifactId>agentspaces-peering</artifactId>
+    </dependency>
+    <!-- The BootstrapChainFactory seam and the Group POJO. The jar carries no
+         Spring class: the Spring names it compiled against are provided-scope
+         stubs there, so this module stays framework-free. -->
+    <dependency>
+      <groupId>ai.badmonkey.agentspaces</groupId>
+      <artifactId>agentspaces-spring-boot-autoconfigure</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>no-framework</id>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <bannedDependencies>
+                  <excludes>
+                    <exclude>io.micronaut*</exclude>
+                    <exclude>org.springframework*</exclude>
+                  </excludes>
+                </bannedDependencies>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

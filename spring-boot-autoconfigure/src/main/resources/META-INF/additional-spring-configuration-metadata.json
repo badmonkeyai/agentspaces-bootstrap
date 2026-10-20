@@ -1,0 +1,463 @@
+{
+  "groups": [
+    {
+      "name": "agentspaces.bootstrap",
+      "type": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.spring.BootstrapProperties",
+      "description": "How each group finds a beacon: the fleet-wide bootstrap chain settings (SRAD appendix D)."
+    },
+    {
+      "name": "agentspaces.groups[].bootstrap",
+      "type": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.spring.BootstrapProperties.GroupBootstrap",
+      "description": "One group's bootstrap chain settings, over the fleet-wide block."
+    }
+  ],
+  "properties": [
+    {
+      "name": "agentspaces.bootstrap.domain",
+      "type": "java.util.List<java.lang.String>",
+      "description": "The domains the DNS-SD and TXT locators search: a list, or 'auto' for the host's search list, or empty for none. Fleet-wide default.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "defaultValue": [
+        "auto"
+      ]
+    },
+    {
+      "name": "agentspaces.bootstrap.order",
+      "type": "java.util.List<java.lang.String>",
+      "description": "The chain order; a locator absent from the list is not asked. Fleet-wide default.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "defaultValue": [
+        "seeds",
+        "dns-sd",
+        "dns-txt",
+        "dns-srv",
+        "k8s",
+        "url",
+        "document",
+        "multicast"
+      ]
+    },
+    {
+      "name": "agentspaces.bootstrap.first-wins",
+      "type": "java.lang.Boolean",
+      "description": "Stop at the first locator that answers with endpoints instead of asking all and merging. Fleet-wide default.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "defaultValue": false
+    },
+    {
+      "name": "agentspaces.bootstrap.timeout",
+      "type": "java.time.Duration",
+      "description": "The per-locator timeout. Fleet-wide default.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "defaultValue": "3s"
+    },
+    {
+      "name": "agentspaces.bootstrap.refresh-min",
+      "type": "java.time.Duration",
+      "description": "The shortest pause before the chain is asked again on an empty view. Fleet-wide default.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "defaultValue": "30s"
+    },
+    {
+      "name": "agentspaces.bootstrap.refresh-max",
+      "type": "java.time.Duration",
+      "description": "The longest pause before the chain is asked again on an empty view. Fleet-wide default.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "defaultValue": "10m"
+    },
+    {
+      "name": "agentspaces.bootstrap.accept-group-id-from",
+      "type": "java.util.List<java.lang.String>",
+      "description": "The locators whose GroupId claim is honoured when none is configured. Fleet-wide default.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "defaultValue": [
+        "url",
+        "document"
+      ]
+    },
+    {
+      "name": "agentspaces.bootstrap.insecure-group-id",
+      "type": "java.lang.Boolean",
+      "description": "Allow an unauthenticated locator (dns-*, k8s, multicast) in accept-group-id-from. Fleet-wide default.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "defaultValue": false
+    },
+    {
+      "name": "agentspaces.bootstrap.beacon-peer",
+      "type": "java.lang.String",
+      "description": "The PeerId that must have signed any beacon document; empty for any. Fleet-wide default.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings"
+    },
+    {
+      "name": "agentspaces.bootstrap.url",
+      "type": "java.lang.String",
+      "description": "Beacon document URLs, comma or space separated. Fleet-wide default.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings"
+    },
+    {
+      "name": "agentspaces.bootstrap.url-allow-plain",
+      "type": "java.lang.Boolean",
+      "description": "Allow http:// beacon document URLs. Fleet-wide default.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "defaultValue": false
+    },
+    {
+      "name": "agentspaces.bootstrap.url-allow-hosts",
+      "type": "java.util.List<java.lang.String>",
+      "description": "The hosts a beacon document URL may name; empty for any. Fleet-wide default.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings"
+    },
+    {
+      "name": "agentspaces.bootstrap.url-allow-private",
+      "type": "java.lang.Boolean",
+      "description": "Allow beacon document URLs that resolve to private or loopback addresses. Fleet-wide default.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "defaultValue": false
+    },
+    {
+      "name": "agentspaces.bootstrap.expand-names",
+      "type": "java.lang.Boolean",
+      "description": "One endpoint per address of a seed name. Fleet-wide default.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "defaultValue": true
+    },
+    {
+      "name": "agentspaces.bootstrap.bean-locators-first",
+      "type": "java.lang.Boolean",
+      "description": "Place the application's BeaconLocator beans before the property-built locators. Fleet-wide default.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "defaultValue": false
+    },
+    {
+      "name": "agentspaces.bootstrap.require",
+      "type": "java.lang.Boolean",
+      "description": "Fail startup when no locator answered within the deadline. Fleet-wide default.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "defaultValue": false
+    },
+    {
+      "name": "agentspaces.bootstrap.trace",
+      "type": "java.lang.Boolean",
+      "description": "Log every locate at INFO with each locator's evidence. Fleet-wide default.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "defaultValue": false
+    },
+    {
+      "name": "agentspaces.bootstrap.dns-srv",
+      "type": "java.lang.String",
+      "description": "The SRV owner name the dns-srv locator asks (_aspace._tcp.seeds.example). Fleet-wide default.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings"
+    },
+    {
+      "name": "agentspaces.bootstrap.dns-srv-scheme",
+      "type": "java.lang.String",
+      "description": "The transport scheme SRV and Kubernetes endpoints take; empty for the node's default. Fleet-wide default.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings"
+    },
+    {
+      "name": "agentspaces.bootstrap.dns-sd-any-group",
+      "type": "java.lang.Boolean",
+      "description": "Let the DNS-SD locator accept any advertised instance, not only the group's own name. Fleet-wide default.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "defaultValue": false
+    },
+    {
+      "name": "agentspaces.bootstrap.document",
+      "type": "java.lang.String",
+      "description": "A beacon document to use as is: a file path or a classpath: resource. Fleet-wide default.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings"
+    },
+    {
+      "name": "agentspaces.bootstrap.k8s.service",
+      "type": "java.lang.String",
+      "description": "The headless Kubernetes service whose pods are the seeds. Fleet-wide default.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings"
+    },
+    {
+      "name": "agentspaces.bootstrap.k8s.namespace",
+      "type": "java.lang.String",
+      "description": "The service's namespace; empty for the pod's own. Fleet-wide default.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings"
+    },
+    {
+      "name": "agentspaces.bootstrap.k8s.port-name",
+      "type": "java.lang.String",
+      "description": "The named port of the service the SRV records carry. Fleet-wide default.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings"
+    },
+    {
+      "name": "agentspaces.bootstrap.k8s.cluster-domain",
+      "type": "java.lang.String",
+      "description": "The cluster domain. Fleet-wide default.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "defaultValue": "cluster.local"
+    },
+    {
+      "name": "agentspaces.groups[].bootstrap.domain",
+      "type": "java.util.List<java.lang.String>",
+      "description": "The domains the DNS-SD and TXT locators search: a list, or 'auto' for the host's search list, or empty for none. Per group, over the fleet-wide block.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "defaultValue": [
+        "auto"
+      ]
+    },
+    {
+      "name": "agentspaces.groups[].bootstrap.order",
+      "type": "java.util.List<java.lang.String>",
+      "description": "The chain order; a locator absent from the list is not asked. Per group, over the fleet-wide block.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "defaultValue": [
+        "seeds",
+        "dns-sd",
+        "dns-txt",
+        "dns-srv",
+        "k8s",
+        "url",
+        "document",
+        "multicast"
+      ]
+    },
+    {
+      "name": "agentspaces.groups[].bootstrap.first-wins",
+      "type": "java.lang.Boolean",
+      "description": "Stop at the first locator that answers with endpoints instead of asking all and merging. Per group, over the fleet-wide block.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "defaultValue": false
+    },
+    {
+      "name": "agentspaces.groups[].bootstrap.timeout",
+      "type": "java.time.Duration",
+      "description": "The per-locator timeout. Per group, over the fleet-wide block.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "defaultValue": "3s"
+    },
+    {
+      "name": "agentspaces.groups[].bootstrap.refresh-min",
+      "type": "java.time.Duration",
+      "description": "The shortest pause before the chain is asked again on an empty view. Per group, over the fleet-wide block.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "defaultValue": "30s"
+    },
+    {
+      "name": "agentspaces.groups[].bootstrap.refresh-max",
+      "type": "java.time.Duration",
+      "description": "The longest pause before the chain is asked again on an empty view. Per group, over the fleet-wide block.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "defaultValue": "10m"
+    },
+    {
+      "name": "agentspaces.groups[].bootstrap.accept-group-id-from",
+      "type": "java.util.List<java.lang.String>",
+      "description": "The locators whose GroupId claim is honoured when none is configured. Per group, over the fleet-wide block.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "defaultValue": [
+        "url",
+        "document"
+      ]
+    },
+    {
+      "name": "agentspaces.groups[].bootstrap.insecure-group-id",
+      "type": "java.lang.Boolean",
+      "description": "Allow an unauthenticated locator (dns-*, k8s, multicast) in accept-group-id-from. Per group, over the fleet-wide block.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "defaultValue": false
+    },
+    {
+      "name": "agentspaces.groups[].bootstrap.beacon-peer",
+      "type": "java.lang.String",
+      "description": "The PeerId that must have signed any beacon document; empty for any. Per group, over the fleet-wide block.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings"
+    },
+    {
+      "name": "agentspaces.groups[].bootstrap.url",
+      "type": "java.lang.String",
+      "description": "Beacon document URLs, comma or space separated. Per group, over the fleet-wide block.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings"
+    },
+    {
+      "name": "agentspaces.groups[].bootstrap.url-allow-plain",
+      "type": "java.lang.Boolean",
+      "description": "Allow http:// beacon document URLs. Per group, over the fleet-wide block.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "defaultValue": false
+    },
+    {
+      "name": "agentspaces.groups[].bootstrap.url-allow-hosts",
+      "type": "java.util.List<java.lang.String>",
+      "description": "The hosts a beacon document URL may name; empty for any. Per group, over the fleet-wide block.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings"
+    },
+    {
+      "name": "agentspaces.groups[].bootstrap.url-allow-private",
+      "type": "java.lang.Boolean",
+      "description": "Allow beacon document URLs that resolve to private or loopback addresses. Per group, over the fleet-wide block.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "defaultValue": false
+    },
+    {
+      "name": "agentspaces.groups[].bootstrap.expand-names",
+      "type": "java.lang.Boolean",
+      "description": "One endpoint per address of a seed name. Per group, over the fleet-wide block.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "defaultValue": true
+    },
+    {
+      "name": "agentspaces.groups[].bootstrap.bean-locators-first",
+      "type": "java.lang.Boolean",
+      "description": "Place the application's BeaconLocator beans before the property-built locators. Per group, over the fleet-wide block.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "defaultValue": false
+    },
+    {
+      "name": "agentspaces.groups[].bootstrap.require",
+      "type": "java.lang.Boolean",
+      "description": "Fail startup when no locator answered within the deadline. Per group, over the fleet-wide block.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "defaultValue": false
+    },
+    {
+      "name": "agentspaces.groups[].bootstrap.trace",
+      "type": "java.lang.Boolean",
+      "description": "Log every locate at INFO with each locator's evidence. Per group, over the fleet-wide block.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "defaultValue": false
+    },
+    {
+      "name": "agentspaces.groups[].bootstrap.dns-srv",
+      "type": "java.lang.String",
+      "description": "The SRV owner name the dns-srv locator asks (_aspace._tcp.seeds.example). Per group, over the fleet-wide block.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings"
+    },
+    {
+      "name": "agentspaces.groups[].bootstrap.dns-srv-scheme",
+      "type": "java.lang.String",
+      "description": "The transport scheme SRV and Kubernetes endpoints take; empty for the node's default. Per group, over the fleet-wide block.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings"
+    },
+    {
+      "name": "agentspaces.groups[].bootstrap.dns-sd-any-group",
+      "type": "java.lang.Boolean",
+      "description": "Let the DNS-SD locator accept any advertised instance, not only the group's own name. Per group, over the fleet-wide block.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "defaultValue": false
+    },
+    {
+      "name": "agentspaces.groups[].bootstrap.document",
+      "type": "java.lang.String",
+      "description": "A beacon document to use as is: a file path or a classpath: resource. Per group, over the fleet-wide block.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings"
+    },
+    {
+      "name": "agentspaces.groups[].bootstrap.k8s.service",
+      "type": "java.lang.String",
+      "description": "The headless Kubernetes service whose pods are the seeds. Per group, over the fleet-wide block.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings"
+    },
+    {
+      "name": "agentspaces.groups[].bootstrap.k8s.namespace",
+      "type": "java.lang.String",
+      "description": "The service's namespace; empty for the pod's own. Per group, over the fleet-wide block.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings"
+    },
+    {
+      "name": "agentspaces.groups[].bootstrap.k8s.port-name",
+      "type": "java.lang.String",
+      "description": "The named port of the service the SRV records carry. Per group, over the fleet-wide block.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings"
+    },
+    {
+      "name": "agentspaces.groups[].bootstrap.k8s.cluster-domain",
+      "type": "java.lang.String",
+      "description": "The cluster domain. Per group, over the fleet-wide block.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "defaultValue": "cluster.local"
+    },
+    {
+      "name": "agentspaces.bootstrap.k8s.protocol",
+      "type": "java.lang.String",
+      "description": "The named port's protocol label, tcp (default) or udp. A Service port with protocol UDP, a DTLS listener, publishes its SRV record under _udp, and its endpoints default to the dtls scheme.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "defaultValue": "tcp"
+    },
+    {
+      "name": "agentspaces.bootstrap.dns-sd-udp",
+      "type": "java.lang.Boolean",
+      "description": "Also browse _agentspaces._udp under each domain; its instances default to the dtls scheme. Off by default: one more PTR query per domain.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "defaultValue": false
+    },
+    {
+      "name": "agentspaces.groups[].bootstrap.k8s.protocol",
+      "type": "java.lang.String",
+      "description": "The named port's protocol label, tcp (default) or udp. A Service port with protocol UDP, a DTLS listener, publishes its SRV record under _udp, and its endpoints default to the dtls scheme.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "defaultValue": "tcp"
+    },
+    {
+      "name": "agentspaces.groups[].bootstrap.dns-sd-udp",
+      "type": "java.lang.Boolean",
+      "description": "Also browse _agentspaces._udp under each domain; its instances default to the dtls scheme. Off by default: one more PTR query per domain.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "defaultValue": false
+    }
+  ],
+  "hints": [
+    {
+      "name": "agentspaces.bootstrap.order",
+      "values": [
+        {
+          "value": "seeds"
+        },
+        {
+          "value": "dns-sd"
+        },
+        {
+          "value": "dns-txt"
+        },
+        {
+          "value": "dns-srv"
+        },
+        {
+          "value": "k8s"
+        },
+        {
+          "value": "url"
+        },
+        {
+          "value": "document"
+        },
+        {
+          "value": "multicast"
+        }
+      ]
+    },
+    {
+      "name": "agentspaces.bootstrap.accept-group-id-from",
+      "values": [
+        {
+          "value": "url"
+        },
+        {
+          "value": "document"
+        },
+        {
+          "value": "dns-sd"
+        },
+        {
+          "value": "dns-txt"
+        },
+        {
+          "value": "dns-srv"
+        },
+        {
+          "value": "k8s"
+        },
+        {
+          "value": "multicast"
+        }
+      ]
+    }
+  ]
+}
