@@ -16,12 +16,14 @@ A **peer** is one running AgentSpaces process: a Spring Boot service, a Micronau
 
 ### Group
 
-A **group** is a named set of peers that share state and gossip about who belongs. A group has a **group id**, which looks like `aspace://z7f3a...`, and a signed document called its **founding**, which the id is a hash of. A peer enters a group in one of two ways:
+A **group** is a named set of peers that share state and gossip about who belongs. Every group has a **group id**, which looks like `aspace://z7f3a...`. The id comes from one of two places, and that decides how a peer enters the group:
 
-- **Found it.** You give the peer a founding text, such as `founding: research-fleet-v1`. Every peer that receives the same text derives the same group id by itself, so there is no secret to distribute.
-- **Join it by id.** You give the peer the group id, as `join: aspace://z7f3a...`. The peer asks a member for the founding document, checks that the document hashes to exactly the id it asked for, and only then introduces itself.
+- **A founding text.** You give every peer the same text, such as `founding: research-fleet-v1`, and each peer derives the same group id from it by itself. There is no signed document and no secret to distribute. This fits one organization, where the operator controls every peer's configuration.
+- **A signed founding.** A founder creates a signed document called the **founding**, and the group id is a hash of it. Members hold the document (a peer can be handed it as `founding-document`). A peer that has only the id, as `join: aspace://z7f3a...`, asks a member for the founding, checks that it hashes to exactly the id it asked for, and only then introduces itself. This fits an id that travels further than the configuration: a partner's setup, a printed credential, a registry.
 
-*Example.* `seed-a` founds `research-fleet` with `founding: research-fleet-v1`. The group now has one member.
+A group started from a text has no founding to serve, so a peer cannot join it by id. Peers join a text group by being given the text.
+
+*Example.* Acme's `research-fleet` uses a text. `seed-a` starts it with `founding: research-fleet-v1`, and every other Acme peer receives the same text. Partner Inc's `partner-fleet` has a signed founding, so Acme's peers can join it by id.
 
 ### Bootstrap: the first contact
 
@@ -77,7 +79,7 @@ The locators that read DNS do their lookups through a small interface, `DnsResol
 The word **beacon** names three different things. This section keeps them apart.
 
 1. **A beacon** is a peer that newcomers can find and dial first. It is an ordinary group member with a stable address, usually playing the `RENDEZVOUS` role (a peer that caches many members' advertisements and answers discovery queries). Nothing in the group protocol marks a peer as a beacon: the word describes how an operator uses a member. Operators run a beacon so that newcomers have somewhere to go. The [`agentspaces-beacon`](https://github.com/badmonkeyai/agentspaces-beacon) project is a ready-made one. It runs as a standalone peer, serves the document below, and prints the DNS records an operator registers.
-2. **The beacon document** is a signed JSON file that a beacon serves at `/.well-known/agentspaces/beacon.json`. For each group it lists the name, the id, the signed founding, the seeds, and the wire hints. It never carries a secret. A newcomer that holds only a group id and the document's URL can fetch the document, check the founding against the id, and learn the seeds. The `url` and `document` locators read it, and `dns-sd` and `dns-txt` follow a `url=` record to it.
+2. **The beacon document** is a signed JSON file that a beacon serves at `/.well-known/agentspaces/beacon.json`. For each group it lists the name, the id, the seeds, and the wire hints, and it adds the signed founding when the beacon's group has one. It never carries a secret. The beacon builds the seed list from its live view of the group: itself first, then members with the rendezvous role, then the other members that listen for connections. For a group with a signed founding, a newcomer that holds the id and the document's URL can fetch the document, check the founding against the id, and learn the seeds. The `url` and `document` locators read it, and `dns-sd` and `dns-txt` follow a `url=` record to it.
 3. **The multicast beacon** is the UDP datagram, off by default, that members send so that peers on the same LAN segment find each other without configuration. It is a core feature, and this project lists it in the chain as the `multicast` locator.
 
 *Example.* Acme runs a beacon peer at `beacon.corp.example`. It serves this document at `https://agentspaces.corp.example/.well-known/agentspaces/beacon.json`:
@@ -85,26 +87,27 @@ The word **beacon** names three different things. This section keeps them apart.
 ```json
 {
   "v": 1,
-  "issuer": "z6Mk...beaconPeerId",
-  "issued": "2026-10-13T14:02:11Z",
+  "issuer": "zDnaCm6XCa...",
+  "issuerKey": "<base64 Ed25519 public key>",
+  "issued": "2026-10-21T19:35:30Z",
   "ttl": 300,
   "groups": [
     {
       "name": "research-fleet",
-      "id": "aspace://z7f3a...",
-      "founding": "<base64 of the signed founding advertisement>",
+      "id": "aspace://zDXTnY2y...",
       "seeds": [
-        { "transport": "tls", "address": "seed-a.corp.example:7500", "priority": 0 },
-        { "transport": "tls", "address": "seed-b.corp.example:7500", "priority": 1 },
-        { "transport": "tls", "address": "beacon.corp.example:7500", "priority": 2 }
-      ]
+        { "transport": "tls", "address": "beacon.corp.example:7500", "priority": 0 },
+        { "transport": "tls", "address": "seed-a.corp.example:7500", "priority": 1 },
+        { "transport": "tls", "address": "seed-b.corp.example:7500", "priority": 2 }
+      ],
+      "wire": { "batch": 1, "hashes": 1, "tree": 1 }
     }
   ],
   "signature": "<base64 Ed25519 signature over every other field>"
 }
 ```
 
-A partner organization's peer holds only `join: aspace://z7f3a...` and this URL. It fetches the document, verifies the founding against the id, and dials the seeds.
+`research-fleet` uses a text, so this group entry has no founding. Partner Inc runs its own beacon for `partner-fleet`, a group with a signed founding, so its document also carries a `founding` field: the base64 of the signed founding advertisement. Acme's `summarizer` holds `join: aspace://q9c2b...`, that document's URL, and one seed: the address of Partner Inc's beacon. The Spring Boot and Micronaut hosts need that seed to start a `join:` group (see the note under the chain example below). The `url` locator then fetches the document, `summarizer` checks the founding against the id, and it dials the seeds the document lists. A Python or TypeScript peer needs only the id and the URL.
 
 ### Chain
 
@@ -116,18 +119,21 @@ A **chain** is the ordered list of locators that one group uses. Every group has
 agentspaces:
   groups:
     - name: research-fleet
-      join: aspace://z7f3a...
+      founding: research-fleet-v1
       seeds: [ "seeds.corp.example:7500" ]
       bootstrap:
         order: [ seeds, dns-sd, url ]          # research-fleet's chain
         url: https://agentspaces.corp.example/.well-known/agentspaces/beacon.json
     - name: partner-fleet
       join: aspace://q9c2b...
+      seeds: [ "beacon.partner.example:7500" ]
       bootstrap:
-        order: [ url ]                         # partner-fleet's chain
+        order: [ seeds, url ]                  # partner-fleet's chain
         url: https://partner.example/.well-known/agentspaces/beacon.json
         beacon-peer: z6Mk...partnerBeacon      # the PeerId that must have signed the document
 ```
+
+A group that joins by id needs at least one configured seed besides its chain. When the Spring Boot and Micronaut hosts check that a `join:` group has a way in, they count the configured seeds, `BeaconLocator` beans, and the multicast locator, and they ignore the locators that `agentspaces.bootstrap.*` builds. A `join:` group with only a `bootstrap` block therefore fails at startup with "joins by GroupId URI but configures no seeds and no locator", so `partner-fleet` lists its beacon's address under `seeds`. A group started from a `founding:` text needs no seed for the check, and neither does a Python or TypeScript peer.
 
 **How a chain answers.** When a peer asks a chain for a group, the chain works through these steps:
 
@@ -154,17 +160,16 @@ With `first-wins: true`, the chain asks one locator at a time and stops at the f
   +--------------------+-----------------------+---------------------+
   | seeds              | dns-sd                | url                 |
   | seeds.corp.example | SRV: seed-a, seed-b   | document lists      |
-  | :7500              | TXT: url=...          | seed-a, seed-b,     |
-  |                    |                       | beacon, and the     |
-  |                    |                       | founding            |
+  | :7500              | TXT: url=...          | beacon, seed-a,     |
+  |                    |                       | and seed-b          |
   +--------------------+-----------------------+---------------------+
               |
               v
   merge in chain order, remove duplicates, expand names to addresses
               |
               v
-  dial the addresses in order, check the founding against the id,
-  introduce itself; from here gossip takes over
+  dial the addresses in order and introduce itself;
+  from here gossip takes over
 ```
 
 ### What the peer checks
@@ -172,11 +177,11 @@ With `first-wins: true`, the chain asks one locator at a time and stops at the f
 A chain suggests where to dial. The peer decides what to believe:
 
 - **Addresses are only dialed.** Every connection goes through the same handshake, signature verification, and admission policy as a connection from any stranger.
-- **A founding is verified.** The peer checks it against the id it was configured with. A peer configured with no id checks it against itself.
+- **A founding is verified when there is one.** When a peer joins by id, it checks the founding against the id it was configured with. A group started from a text has no founding, so the peer relies on the handshake, the signature checks, and the group's admission policy, as it does for every connection.
 - **A group id claim needs a named source.** A locator can say what it believes the group id is. The chain accepts that claim only from the locators listed in `accept-group-id-from`, which default to `url` and `document`, the sources that arrive over HTTPS or from a file you control. Plain DNS answers carry no signature. Naming `dns-sd`, `dns-txt`, `dns-srv`, `k8s`, or `multicast` there stops the application at startup unless you set `insecure-group-id: true` or give the host a `DnsResolver` whose answers are authenticated, such as the DNSSEC-validating one in `agentspaces-bootstrap-dns`.
 - **A document can be pinned.** `beacon-peer` names the PeerId that must have signed any document. The `url` locator also fetches over HTTPS by default, caps the size, follows at most two redirects on the same host, and refuses private addresses unless `url-allow-private` allows them.
 
-*Example.* An attacker poisons the DNS answer for `seeds.corp.example`, and `summarizer` dials the attacker's host. That host cannot show a founding document that hashes to `aspace://z7f3a...`, so `summarizer` does not join it and asks the chain again later.
+*Example.* An attacker poisons the DNS answer for a seed name of Partner Inc's `partner-fleet`, and `summarizer` dials the attacker's host while joining that group by id. The host cannot show a founding that hashes to `aspace://q9c2b...`, so `summarizer` does not join it and asks the chain again later.
 
 ### Hosts and modules
 
@@ -188,8 +193,9 @@ A **host** is the framework that creates your peer: the Spring Boot starter (`ag
 |---|---|---|
 | Peer | one running AgentSpaces process | `seed-a`, `summarizer` |
 | Group | a named set of peers that share state | `research-fleet` |
-| Group id | the `aspace://` identifier, a hash of the founding | `aspace://z7f3a...` |
-| Founding | the signed document that defines a group | made from `founding: research-fleet-v1` |
+| Group id | the `aspace://` identifier of a group, derived from a founding text or from a signed founding | `aspace://zDXTnY2y...` |
+| Founding text | a string every peer of a group receives; each peer derives the group id from it | `founding: research-fleet-v1` |
+| Signed founding | a document a founder signs, which the group id is a hash of; members serve it to peers that join by id | `partner-fleet`'s, which Acme's peers verify before joining |
 | View | the members a peer currently knows | empty when `summarizer` starts |
 | Bootstrap | finding where to dial first | how `summarizer` learns about `seed-a` |
 | Seed | an address a newcomer dials first | `seed-a.corp.example:7500` |
@@ -203,7 +209,7 @@ A **host** is the framework that creates your peer: the Spring Boot starter (`ag
 | Multicast beacon | the opt-in LAN datagram that members send | a lab on one network segment |
 | Rendezvous | a role for a peer that caches many members' advertisements and answers discovery queries | `beacon.corp.example` |
 | Chain | the ordered locators one group uses | `[seeds, dns-sd, url]` |
-| Group's chain | each group has its own chain, built from fleet-wide settings plus the group's overrides | `research-fleet` uses `[seeds, dns-sd, url]` and `partner-fleet` uses `[url]` |
+| Group's chain | each group has its own chain, built from fleet-wide settings plus the group's overrides | `research-fleet` uses `[seeds, dns-sd, url]` and `partner-fleet` uses `[seeds, url]` |
 | Seeds first | `seeds` leads the default order, so the configured list is asked first and ranks first | `seeds.corp.example` heads the merged answer |
 | First-wins | a chain setting that asks one locator at a time and stops at the first that returns addresses | `first-wins: true` |
 | Host | the framework that creates the peer and builds the chains | Spring Boot or Micronaut |
@@ -213,10 +219,10 @@ A **host** is the framework that creates your peer: the Spring Boot starter (`ag
 
 | Artifact | What | Depends on |
 |---|---|---|
-| `ai.badmonkey.agentspaces:agentspaces-bootstrap:0.4.0` | the library: `DnsResolver` and the JNDI resolver, `SrvLocator`, `DnsSdLocator`, `TxtLocator`, `UrlLocator`, `K8sLocator`, `StaticDocumentLocator`, `DomainFinder`, `BeaconDocument`, `BootstrapSettings`, `LocatorAssembly` | `agentspaces-api`, `-common`, `-identity`, Jackson |
-| `ai.badmonkey.agentspaces:agentspaces-bootstrap-chain:0.4.0` | `ChainComposer`, the composition both hosts share, and `BootstrapTree`, the nested-map binding of the keys | the library, `agentspaces-peering` (`BootstrapChain`), the core autoconfigure jar (the `BootstrapChainFactory` seam; it carries no Spring class) |
-| `ai.badmonkey.agentspaces:agentspaces-bootstrap-spring-boot-autoconfigure:0.4.0` | `BootstrapProperties`, `BootstrapAutoConfiguration` | `chain`, Spring Boot 4.1 |
-| `ai.badmonkey.agentspaces:agentspaces-bootstrap-micronaut:0.4.0` | `BootstrapFactory` | `chain`, Micronaut 5.2 |
+| `ai.badmonkey.agentspaces:agentspaces-bootstrap:0.5.0` | the library: `DnsResolver` and the JNDI resolver, `SrvLocator`, `DnsSdLocator`, `TxtLocator`, `UrlLocator`, `K8sLocator`, `StaticDocumentLocator`, `DomainFinder`, `BeaconDocument`, `BootstrapSettings`, `LocatorAssembly` | `agentspaces-api`, `-common`, `-identity`, Jackson |
+| `ai.badmonkey.agentspaces:agentspaces-bootstrap-chain:0.5.0` | `ChainComposer`, the composition both hosts share, and `BootstrapTree`, the nested-map binding of the keys | the library, `agentspaces-peering` (`BootstrapChain`), the core autoconfigure jar (the `BootstrapChainFactory` seam; it carries no Spring class) |
+| `ai.badmonkey.agentspaces:agentspaces-bootstrap-spring-boot-autoconfigure:0.5.0` | `BootstrapProperties`, `BootstrapAutoConfiguration` | `chain`, Spring Boot 4.1 |
+| `ai.badmonkey.agentspaces:agentspaces-bootstrap-micronaut:0.5.0` | `BootstrapFactory` | `chain`, Micronaut 5.2 |
 
 An application adds the host module beside the core starter (`agentspaces-spring-boot-starter`)
 or the core Micronaut factory (`agentspaces-micronaut`); the library and the
@@ -226,7 +232,7 @@ chain come transitively.
 <dependency>
   <groupId>ai.badmonkey.agentspaces</groupId>
   <artifactId>agentspaces-bootstrap-spring-boot-autoconfigure</artifactId>
-  <version>0.4.0</version>
+  <version>0.5.0</version>
 </dependency>
 ```
 
@@ -397,9 +403,14 @@ services:
     image: my-fleet:latest
     environment:
       AGENTSPACES_GROUPS_0_NAME: fleet
-      AGENTSPACES_GROUPS_0_JOIN: aspace://z7f3a...
+      AGENTSPACES_GROUPS_0_FOUNDING: fleet-v1        # the seeds' text: same text, same group
       AGENTSPACES_GROUPS_0_SEEDS_0: seeds:7500       # one name, three addresses
 ```
+
+The workers use the same founding text as the seeds. A group started from a
+text has no signed founding to serve, so a worker that set
+`AGENTSPACES_GROUPS_0_JOIN` to the group's id would wait ten seconds and then
+fail with `no seed served a verified founding advertisement`.
 
 ## Properties
 
@@ -439,7 +450,7 @@ mvn clean install
 ```
 
 Java 21. The tests start real peers on loopback ports; `agentspaces-micronaut`
-0.4.0 (the core's Micronaut host) must be in the local repository for the
+0.5.0 (the core's Micronaut host) must be in the local repository for the
 Micronaut module's end-to-end test.
 
 ## Releasing
@@ -447,11 +458,17 @@ Micronaut module's end-to-end test.
 The `central-publish` profile attaches the sources and javadoc jars, signs
 every artifact with GPG (the passphrase from `MAVEN_GPG_PASSPHRASE`, or a GPG
 agent), and uploads through the Sonatype Central Portal using the `central`
-server id in `settings.xml`:
+server id in `settings.xml`. The dry run builds the jars without signing or
+uploading anything:
 
 ```sh
-mvn -Pcentral-publish -DskipTests -Dgpg.skip=true clean package   # dry run
-mvn -Pcentral-publish clean deploy                                # release
+mvn -Pcentral-publish -DskipTests -Dgpg.skip=true clean package
+```
+
+The release signs the artifacts and uploads them:
+
+```sh
+mvn -Pcentral-publish clean deploy
 ```
 
 `autoPublish` is off, so the upload waits on the Portal as a validated bundle

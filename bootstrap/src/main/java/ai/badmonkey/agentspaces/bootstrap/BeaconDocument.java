@@ -37,11 +37,10 @@ import java.util.Optional;
 
 /**
  * The beacon document (SRAD appendix C): what a beacon serves at
- * {@code /.well-known/agentspaces/beacon.json} and a social beacon under a
- * lookup code. Per group: the name, the {@code aspace://} id, the signed
- * founding advertisement (base64 CBOR), the seeds, the wire hints, the
- * multicast group, free parameters, and at a social beacon the public
- * delegation. Document-wide: the issuer PeerId, its raw key, the issue time,
+ * {@code /.well-known/agentspaces/beacon.json}. Per group: the name, the
+ * {@code aspace://} id, the signed founding advertisement (base64 CBOR) when
+ * the group has one, the seeds, the wire hints, the multicast group, and free
+ * parameters. Document-wide: the issuer PeerId, its raw key, the issue time,
  * a time to live in seconds, and the issuer's Ed25519 signature over the
  * canonical bytes (every field but {@code signature}, in declared order, no
  * whitespace, map keys sorted). A reader ignores unknown fields. The document
