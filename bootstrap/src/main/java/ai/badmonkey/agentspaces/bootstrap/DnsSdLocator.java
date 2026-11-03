@@ -120,7 +120,11 @@ public final class DnsSdLocator implements BeaconLocator {
         Optional<byte[]> founding = Optional.empty();
         List<String> evidence = new ArrayList<>();
         List<String[]> services = new ArrayList<>();
-        for (String domain : domains.get()) {
+        List<String> candidates = domains.get();
+        if (candidates.isEmpty()) {
+            return noDomain(NAME, domains);
+        }
+        for (String domain : candidates) {
             services.add(new String[]{SERVICE + "." + domain, request.defaultScheme()});
             if (browseUdp) {
                 services.add(new String[]{SERVICE_UDP + "." + domain, "dtls"});
@@ -174,24 +178,27 @@ public final class DnsSdLocator implements BeaconLocator {
     }
 
     static Optional<GroupId> parseId(String value) {
-        if (value == null) {
-            return Optional.empty();
-        }
-        String id = value.trim();
-        if (id.toLowerCase(Locale.ROOT).startsWith("aspace://")) {
-            id = id.substring("aspace://".length());
-        }
-        int slash = id.indexOf('/');
-        if (slash >= 0) {
-            id = id.substring(0, slash);
-        }
-        if (id.isEmpty()) {
+        if (value == null || value.isBlank()) {
             return Optional.empty();
         }
         try {
-            return Optional.of(GroupId.of(id));
+            return Optional.of(GroupId.ofUri(value));
         } catch (RuntimeException e) {
             return Optional.empty();
         }
+    }
+
+    /** A domain-driven locator can locate only when a domain exists to browse. */
+    @Override
+    public boolean canLocate() {
+        return !domains.get().isEmpty();
+    }
+
+    /** The empty answer of a domain-driven locator with no domain, naming what the finder tried. */
+    static BeaconHint noDomain(String name, java.util.function.Supplier<List<String>> domains) {
+        String tried = domains instanceof DomainFinder finder && !finder.tried().isEmpty()
+                ? " (tried " + finder.tried() + ")" : "";
+        return new BeaconHint(List.of(), Optional.empty(), Optional.empty(), Map.of(), Duration.ZERO,
+                name + ": no domain" + tried);
     }
 }

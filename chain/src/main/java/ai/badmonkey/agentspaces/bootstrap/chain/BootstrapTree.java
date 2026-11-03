@@ -104,20 +104,12 @@ public class BootstrapTree {
      * @return the merged settings, empty when neither block is set
      */
     public BootstrapSettings settingsFor(String groupName) {
-        return BootstrapSettings.merge(bootstrap, groupSettings().get(groupName));
+        return BootstrapSettings.settingsFor(bootstrap, groupSettings(), groupName);
     }
 
     /** Whether no bootstrap key is set anywhere. */
     public boolean isEmpty() {
-        if (bootstrap != null && !bootstrap.isEmpty()) {
-            return false;
-        }
-        for (BootstrapSettings settings : groupSettings().values()) {
-            if (!settings.isEmpty()) {
-                return false;
-            }
-        }
-        return true;
+        return BootstrapSettings.isEmpty(bootstrap, groupSettings());
     }
 
     /**
@@ -252,29 +244,7 @@ public class BootstrapTree {
      * @return the duration
      */
     public static Duration parseDuration(String text) {
-        String t = Objects.requireNonNull(text, "text").trim();
-        if (t.isEmpty()) {
-            throw new IllegalArgumentException("empty duration");
-        }
-        String upper = t.toUpperCase(Locale.ROOT);
-        if (upper.startsWith("P") || upper.startsWith("-P") || upper.startsWith("+P")) {
-            return Duration.parse(upper);
-        }
-        int i = t.length();
-        while (i > 0 && Character.isLetter(t.charAt(i - 1))) {
-            i--;
-        }
-        String number = t.substring(0, i).trim();
-        String unit = t.substring(i).trim().toLowerCase(Locale.ROOT);
-        long n = Long.parseLong(number);
-        return switch (unit) {
-            case "", "ms" -> Duration.ofMillis(n);
-            case "s" -> Duration.ofSeconds(n);
-            case "m" -> Duration.ofMinutes(n);
-            case "h" -> Duration.ofHours(n);
-            case "d" -> Duration.ofDays(n);
-            default -> throw new IllegalArgumentException("unknown duration unit '" + unit + "' in '" + text + "'");
-        };
+        return ai.badmonkey.agentspaces.common.time.Durations.parse(text, true);
     }
 
     static final class LenientDuration extends JsonDeserializer<Duration> {

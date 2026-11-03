@@ -51,7 +51,7 @@ class BootstrapAutoConfigurationTest {
     private static final BeaconRequest REQUEST = new BeaconRequest("fleet", Optional.empty(), "tcp", Set.of("tcp"));
 
     private static int freePort() {
-        try (ServerSocket socket = new ServerSocket(0)) {
+        try (ServerSocket socket = new ServerSocket(0, 50, java.net.InetAddress.getLoopbackAddress())) {
             return socket.getLocalPort();
         } catch (IOException e) {
             throw new IllegalStateException(e);

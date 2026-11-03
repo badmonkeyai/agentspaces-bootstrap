@@ -75,6 +75,12 @@ public final class TxtLocator implements BeaconLocator {
         this.ttl = Objects.requireNonNull(ttl, "ttl");
     }
 
+    /** A domain-driven locator can locate only when a domain exists to query. */
+    @Override
+    public boolean canLocate() {
+        return !domains.get().isEmpty();
+    }
+
     @Override
     public String name() {
         return NAME;
@@ -88,7 +94,11 @@ public final class TxtLocator implements BeaconLocator {
         Optional<byte[]> founding = Optional.empty();
         List<String> evidence = new ArrayList<>();
         Duration shortest = ttl;
-        for (String domain : domains.get()) {
+        List<String> candidates = domains.get();
+        if (candidates.isEmpty()) {
+            return DnsSdLocator.noDomain(NAME, domains);
+        }
+        for (String domain : candidates) {
             String name = LABEL + "." + domain;
             Map<String, String> txt = TxtRecords.parse(resolver.txt(name));
             if (txt.isEmpty()) {

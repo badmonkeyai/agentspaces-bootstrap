@@ -63,6 +63,14 @@ public final class StaticDocumentLocator implements BeaconLocator {
         return l.startsWith("classpath:") ? resource(l, options) : file(Path.of(l), options);
     }
 
+    /** A file that is readable now, or a resource that is on the classpath. */
+    @Override
+    public boolean canLocate() {
+        return path != null ? Files.isReadable(path)
+                : Thread.currentThread().getContextClassLoader().getResource(resource) != null
+                || StaticDocumentLocator.class.getClassLoader().getResource(resource) != null;
+    }
+
     @Override
     public String name() {
         return NAME;

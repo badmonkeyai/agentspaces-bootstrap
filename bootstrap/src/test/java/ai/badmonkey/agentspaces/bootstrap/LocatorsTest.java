@@ -300,4 +300,50 @@ class LocatorsTest {
         assertThat(JndiDnsResolver.characterStrings("v=1")).containsExactly("v=1");
         assertThat(DomainFinder.of(List.of("Corp.Example.", "local")).get()).containsExactly("corp.example");
     }
+
+    /** ISSUE-BootstrapRobustness Q4: a document without a signature is refused unless url-allow-unsigned says otherwise. */
+    @Test
+    void anUnsignedDocumentIsRefusedUnlessAllowed() throws Exception {
+        BeaconDocument unsigned = document().withSignature(null);
+        assertThat(unsigned.signature()).isNull();
+        String url = serve(unsigned.toBytes(), "/beacon.json");
+        assertThatThrownBy(() -> new UrlLocator(List.of(URI.create(url)), loopback(), null).locate(REQUEST))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("carries no signature")
+                .hasMessageContaining("url-allow-unsigned");
+        assertThat(new UrlLocator(List.of(URI.create(url)), loopback().withAllowUnsigned(true), null)
+                .locate(REQUEST).endpoints()).as("allowed by the key").hasSize(2);
+        assertThatThrownBy(() -> new UrlLocator(List.of(URI.create(url)),
+                loopback().withAllowUnsigned(true).withBeaconPeer(PeerIdentity.generate().peerId()), null)
+                .locate(REQUEST))
+                .as("a pinned beacon still requires its signature")
+                .isInstanceOf(IOException.class).hasMessageContaining("pinned");
+        java.nio.file.Path file = java.nio.file.Files.createTempFile("beacon", ".json");
+        java.nio.file.Files.write(file, unsigned.toBytes());
+        assertThatThrownBy(() -> StaticDocumentLocator.file(file, loopback()).locate(REQUEST))
+                .as("the document locator applies the same rule")
+                .isInstanceOf(IOException.class).hasMessageContaining("carries no signature");
+        assertThat(StaticDocumentLocator.file(file, loopback().withAllowUnsigned(true)).locate(REQUEST).endpoints())
+                .hasSize(2);
+        BootstrapSettings settings = new BootstrapSettings();
+        assertThat(LocatorAssembly.urlOptions(settings).allowUnsigned()).as("off by default").isFalse();
+        settings.setUrlAllowUnsigned(true);
+        assertThat(LocatorAssembly.urlOptions(settings).allowUnsigned()).isTrue();
+    }
+
+    /** review-110226-deadcode-parity B2: a locator with nothing configured says so before any join. */
+    @Test
+    void aLocatorWithNothingConfiguredCannotLocate() throws Exception {
+        InMemoryDnsResolver resolver = new InMemoryDnsResolver();
+        UrlLocator follower = UrlLocator.follower(loopback(), null);
+        assertThat(new DnsSdLocator(DomainFinder.none(), resolver, false, follower).canLocate()).isFalse();
+        assertThat(new DnsSdLocator(DomainFinder.of(List.of("corp.test")), resolver, false, follower).canLocate()).isTrue();
+        assertThat(new TxtLocator(DomainFinder.none(), resolver, follower).canLocate()).isFalse();
+        assertThat(new DnsSdLocator(DomainFinder.none(), resolver, false, follower).locate(REQUEST).evidence())
+                .contains("no domain");
+        assertThat(new UrlLocator(List.of(), loopback(), null).canLocate()).isFalse();
+        assertThat(new UrlLocator(List.of(URI.create("http://127.0.0.1:1/x")), loopback(), null).canLocate()).isTrue();
+        java.nio.file.Path missing = java.nio.file.Path.of(System.getProperty("java.io.tmpdir"), "no-such-beacon-" + System.nanoTime() + ".json");
+        assertThat(StaticDocumentLocator.file(missing, loopback()).canLocate()).isFalse();
+    }
 }

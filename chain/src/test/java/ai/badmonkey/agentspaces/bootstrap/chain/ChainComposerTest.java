@@ -23,8 +23,7 @@ import ai.badmonkey.agentspaces.bootstrap.BootstrapSettings;
 import ai.badmonkey.agentspaces.bootstrap.InMemoryDnsResolver;
 import ai.badmonkey.agentspaces.peering.bootstrap.BootstrapChain;
 import ai.badmonkey.agentspaces.peering.bootstrap.SeedsLocator;
-import ai.badmonkey.agentspaces.spring.AgentSpacesProperties;
-import ai.badmonkey.agentspaces.spring.BootstrapChainFactory;
+import ai.badmonkey.agentspaces.peering.bootstrap.BootstrapChainFactory;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -41,11 +40,6 @@ class ChainComposerTest {
 
     private static final BeaconRequest REQUEST = new BeaconRequest("fleet", Optional.empty(), "tcp", Set.of("tcp"));
 
-    private static AgentSpacesProperties.Group group(String name) {
-        AgentSpacesProperties.Group group = new AgentSpacesProperties.Group();
-        group.setName(name);
-        return group;
-    }
 
     /** A bean locator that records whether it was asked. */
     private static final class Bean implements BeaconLocator {
@@ -79,7 +73,7 @@ class ChainComposerTest {
     void noBootstrapKeysMeansTheDefaultChainOverTheIncomingLocators() {
         BootstrapChainFactory factory = ChainComposer.factory(null, Map.of(), new InMemoryDnsResolver());
         List<BeaconLocator> incoming = List.of(SeedsLocator.of(List.of("127.0.0.1:1")), new Bean("app", 0));
-        assertThat(names(factory.chainFor(group("fleet"), incoming))).containsExactly("seeds", "app");
+        assertThat(names(factory.chainFor("fleet", incoming))).containsExactly("seeds", "app");
     }
 
     @Test
@@ -91,9 +85,9 @@ class ChainComposerTest {
         group.setDnsSrv("_aspace._tcp.seeds.example");
         BootstrapChainFactory factory = ChainComposer.factory(fleet, Map.of("fleet", group), new InMemoryDnsResolver());
         List<BeaconLocator> incoming = List.of(SeedsLocator.of(List.of()), new Bean("app", 0));
-        assertThat(names(factory.chainFor(group("fleet"), incoming))).containsExactly("seeds", "url", "dns-srv", "app");
+        assertThat(names(factory.chainFor("fleet", incoming))).containsExactly("seeds", "url", "dns-srv", "app");
         // Another group sees the fleet block only: no dns-srv name, so none.
-        assertThat(names(factory.chainFor(group("other"), incoming))).containsExactly("seeds", "url", "app");
+        assertThat(names(factory.chainFor("other", incoming))).containsExactly("seeds", "url", "app");
     }
 
     @Test
@@ -104,7 +98,7 @@ class ChainComposerTest {
         fleet.setBeanLocatorsFirst(true);
         BootstrapChainFactory factory = ChainComposer.factory(fleet, Map.of(), new InMemoryDnsResolver());
         List<BeaconLocator> incoming = List.of(SeedsLocator.of(List.of("127.0.0.1:1")), new Bean("app", 0));
-        assertThat(names(factory.chainFor(group("fleet"), incoming))).containsExactly("app", "dns-srv");
+        assertThat(names(factory.chainFor("fleet", incoming))).containsExactly("app", "dns-srv");
     }
 
     @Test
@@ -115,7 +109,7 @@ class ChainComposerTest {
         BootstrapChainFactory factory = ChainComposer.factory(fleet, Map.of(), new InMemoryDnsResolver());
         Bean first = new Bean("first", 7001);
         Bean second = new Bean("second", 7002);
-        BeaconLocator chain = factory.chainFor(group("fleet"), List.of(SeedsLocator.of(List.of()), first, second));
+        BeaconLocator chain = factory.chainFor("fleet", List.of(SeedsLocator.of(List.of()), first, second));
         BeaconHint hint = chain.locate(REQUEST);
         assertThat(hint.endpoints()).extracting(PeerAdvertisement.Endpoint::address).containsExactly("127.0.0.1:7001");
         assertThat(first.asked).containsExactly("fleet");
@@ -183,5 +177,87 @@ class ChainComposerTest {
         assertThat(BootstrapTree.bind(Map.of("bind", "x", "groups", List.of(Map.of("name", "g")))).isEmpty()).isTrue();
         assertThat(BootstrapTree.parseDuration("2h")).isEqualTo(Duration.ofHours(2));
         assertThat(BootstrapTree.parseDuration("250")).isEqualTo(Duration.ofMillis(250));
+    }
+
+    /** ISSUE-BootstrapRobustness FR-3: seeds that the effective order leaves out are named once, at startup. */
+    @Test
+    void seedsThatTheOrderLeavesOutAreWarnedAboutAndStillLeftOut() {
+        BootstrapSettings fleet = new BootstrapSettings();
+        fleet.setOrder(List.of("dns-srv"));
+        fleet.setDnsSrv("_aspace._tcp.x");
+        List<BeaconLocator> incoming = List.of(SeedsLocator.of(List.of("127.0.0.1:1", "127.0.0.1:2")));
+        String message = ChainComposer.seedsLeftOut("fleet", BootstrapSettings.merge(fleet, null), incoming);
+        assertThat(message)
+                .contains("group 'fleet' lists 2 seed(s)")
+                .contains("[dns-srv]")
+                .contains("leaves out 'seeds'")
+                .contains("agentspaces.bootstrap.order")
+                .contains("agentspaces.groups[].bootstrap.order");
+        BootstrapChainFactory factory = ChainComposer.factory(fleet, Map.of(), new InMemoryDnsResolver());
+        assertThat(((BootstrapChain) factory.chainFor("fleet", incoming)).locators())
+                .extracting(BeaconLocator::name).as("the chain is composed as the operator asked")
+                .containsExactly("dns-srv");
+        assertThat(ChainComposer.seedsLeftOut("fleet", BootstrapSettings.merge(fleet, null),
+                List.of(SeedsLocator.of(List.of())))).as("no seed to lose").isNull();
+        BootstrapSettings withSeeds = new BootstrapSettings();
+        withSeeds.setOrder(List.of("seeds", "dns-srv"));
+        withSeeds.setDnsSrv("_aspace._tcp.x");
+        assertThat(ChainComposer.seedsLeftOut("fleet", BootstrapSettings.merge(withSeeds, null), incoming))
+                .as("the order names seeds").isNull();
+        assertThat(ChainComposer.seedsLeftOut("fleet", null, incoming)).as("no settings, the default chain").isNull();
+    }
+
+    /** review-110226-deadcode-parity B3: the order places seeds and multicast by position, and drops what it omits. */
+    @Test
+    void theOrderPlacesSeedsAndMulticastByPositionAndDropsWhatItOmits() {
+        BootstrapSettings fleet = new BootstrapSettings();
+        fleet.setOrder(List.of("dns-srv", "multicast", "seeds"));
+        fleet.setDnsSrv("_aspace._tcp.x");
+        BeaconLocator multicast = new BeaconLocator() {
+            @Override
+            public String name() {
+                return ai.badmonkey.agentspaces.peering.bootstrap.MulticastLocator.NAME;
+            }
+
+            @Override
+            public BeaconHint locate(BeaconRequest request) {
+                return BeaconHint.none();
+            }
+        };
+        BeaconLocator bean = new BeaconLocator() {
+            @Override
+            public String name() {
+                return "app";
+            }
+
+            @Override
+            public BeaconHint locate(BeaconRequest request) {
+                return BeaconHint.none();
+            }
+        };
+        List<BeaconLocator> incoming = List.of(SeedsLocator.of(List.of("127.0.0.1:1")), multicast, bean);
+        BootstrapChainFactory factory = ChainComposer.factory(fleet, Map.of(), new InMemoryDnsResolver());
+        assertThat(((BootstrapChain) factory.chainFor("fleet", incoming)).locators()).extracting(BeaconLocator::name)
+                .as("the order governs seeds and multicast; beans follow").containsExactly("dns-srv", "multicast", "seeds", "app");
+        BootstrapSettings noMulticast = new BootstrapSettings();
+        noMulticast.setOrder(List.of("seeds", "dns-srv"));
+        noMulticast.setDnsSrv("_aspace._tcp.x");
+        assertThat(((BootstrapChain) ChainComposer.factory(noMulticast, Map.of(), new InMemoryDnsResolver())
+                .chainFor("fleet", incoming)).locators()).extracting(BeaconLocator::name)
+                .as("multicast left out of the order is not asked").containsExactly("seeds", "dns-srv", "app");
+        assertThat(ChainComposer.multicastLeftOut("fleet", BootstrapSettings.merge(noMulticast, null), incoming))
+                .contains("multicast beacon on").contains("leaves out 'multicast'");
+        assertThat(ChainComposer.multicastLeftOut("fleet", BootstrapSettings.merge(fleet, null), incoming)).isNull();
+    }
+
+    /** review B5: with no key set the chain still expands seed names through the resolver it was given. */
+    @Test
+    void anEmptyBlockStillExpandsNamesThroughTheResolver() throws Exception {
+        InMemoryDnsResolver resolver = new InMemoryDnsResolver();
+        resolver.address("seed.test", "127.0.0.1");
+        BeaconLocator chain = ChainComposer.compose(null, List.of(SeedsLocator.of(List.of("seed.test:7500"))), resolver, null);
+        assertThat(chain.locate(REQUEST).endpoints()).extracting(PeerAdvertisement.Endpoint::address)
+                .containsExactly("127.0.0.1:7500");
+        assertThat(resolver.queries()).isPositive();
     }
 }

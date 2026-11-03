@@ -44,9 +44,9 @@ import java.util.Set;
  * Fetches beacon documents (SRAD DB-L-07): HTTPS by default (plain HTTP only
  * when allowed), a deadline, a size cap, at most two redirects on the same
  * host, no credentials and no cookies, private-address targets refused
- * unless allowed, an optional host allow-list. The document's signature is
- * verified when it carries one; when a beacon PeerId is pinned, a document
- * not signed by it is refused. The group is selected by the request's
+ * unless allowed, an optional host allow-list. A document must carry a
+ * signature that verifies, unless unsigned documents are allowed; when a
+ * beacon PeerId is pinned, a document not signed by it is refused. The group is selected by the request's
  * GroupId when known, else by name; its founding, seeds, wire hints, and
  * parameters become the hint, with the document's TTL.
  */
@@ -63,10 +63,11 @@ public final class UrlLocator implements BeaconLocator {
      * @param allowPrivate permit loopback, link-local, and site-local targets
      * @param maxBytes     the largest document read
      * @param timeout      the per-request deadline
-     * @param beaconPeer   the PeerId that must have signed, or empty
+     * @param beaconPeer    the PeerId that must have signed, or empty
+     * @param allowUnsigned accept a document that carries no signature (ISSUE-BootstrapRobustness Q4)
      */
     public record Options(boolean allowPlain, Set<String> allowHosts, boolean allowPrivate, int maxBytes,
-                          Duration timeout, Optional<PeerId> beaconPeer) {
+                          Duration timeout, Optional<PeerId> beaconPeer, boolean allowUnsigned) {
 
         public Options {
             allowHosts = Set.copyOf(allowHosts);
@@ -74,29 +75,41 @@ public final class UrlLocator implements BeaconLocator {
             Objects.requireNonNull(beaconPeer, "beaconPeer");
         }
 
-        /** HTTPS only, any host, no private targets, 64 KiB, 3 s, no pin. */
+        /** The guards before 0.5.0, which accepted an unsigned document. */
+        public Options(boolean allowPlain, Set<String> allowHosts, boolean allowPrivate, int maxBytes,
+                       Duration timeout, Optional<PeerId> beaconPeer) {
+            this(allowPlain, allowHosts, allowPrivate, maxBytes, timeout, beaconPeer, false);
+        }
+
+        /** HTTPS only, any host, no private targets, 64 KiB, 3 s, no pin, signed documents only. */
         public static Options defaults() {
-            return new Options(false, Set.of(), false, 64 * 1024, Duration.ofSeconds(3), Optional.empty());
+            return new Options(false, Set.of(), false, 64 * 1024, Duration.ofSeconds(3), Optional.empty(), false);
         }
 
         public Options withAllowPlain(boolean value) {
-            return new Options(value, allowHosts, allowPrivate, maxBytes, timeout, beaconPeer);
+            return new Options(value, allowHosts, allowPrivate, maxBytes, timeout, beaconPeer, allowUnsigned);
         }
 
         public Options withAllowPrivate(boolean value) {
-            return new Options(allowPlain, allowHosts, value, maxBytes, timeout, beaconPeer);
+            return new Options(allowPlain, allowHosts, value, maxBytes, timeout, beaconPeer, allowUnsigned);
         }
 
         public Options withAllowHosts(Set<String> hosts) {
-            return new Options(allowPlain, hosts, allowPrivate, maxBytes, timeout, beaconPeer);
+            return new Options(allowPlain, hosts, allowPrivate, maxBytes, timeout, beaconPeer, allowUnsigned);
         }
 
         public Options withBeaconPeer(PeerId peer) {
-            return new Options(allowPlain, allowHosts, allowPrivate, maxBytes, timeout, Optional.ofNullable(peer));
+            return new Options(allowPlain, allowHosts, allowPrivate, maxBytes, timeout, Optional.ofNullable(peer),
+                    allowUnsigned);
         }
 
         public Options withTimeout(Duration value) {
-            return new Options(allowPlain, allowHosts, allowPrivate, maxBytes, value, beaconPeer);
+            return new Options(allowPlain, allowHosts, allowPrivate, maxBytes, value, beaconPeer, allowUnsigned);
+        }
+
+        /** Accept a document that carries no signature; a pinned beacon still requires its signature. */
+        public Options withAllowUnsigned(boolean value) {
+            return new Options(allowPlain, allowHosts, allowPrivate, maxBytes, timeout, beaconPeer, value);
         }
     }
 
@@ -123,6 +136,11 @@ public final class UrlLocator implements BeaconLocator {
     /** A locator with no configured URLs, used by locators that follow {@code url=} records. */
     public static UrlLocator follower(Options options, HttpClient client) {
         return new UrlLocator(List.of(), options, client);
+    }
+
+    @Override
+    public boolean canLocate() {
+        return !urls.isEmpty();
     }
 
     @Override
@@ -204,11 +222,17 @@ public final class UrlLocator implements BeaconLocator {
      * @param options  the guards (the pin)
      * @param evidence what to say
      * @return the hint
-     * @throws IOException when the document's signature is required and does not verify
+     * @throws IOException when the document carries no signature and unsigned documents are not allowed,
+     *                     when its signature does not verify, or when it is not signed by the pinned beacon
      */
     public static BeaconHint hint(BeaconDocument document, BeaconRequest request, Options options, String evidence)
             throws IOException {
         Optional<PeerId> signer = document.signer();
+        if (document.signature() == null && !options.allowUnsigned()) {
+            throw new IOException(evidence + ": the document carries no signature; a beacon signs the document"
+                    + " it serves, so an unsigned one lets its publisher choose the seeds. Set"
+                    + " agentspaces.bootstrap.url-allow-unsigned: true to accept it anyway");
+        }
         if (document.signature() != null && signer.isEmpty()) {
             throw new IOException(evidence + ": the document's signature does not verify");
         }

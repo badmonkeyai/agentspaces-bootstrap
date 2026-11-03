@@ -47,26 +47,43 @@ public final class LocatorAssembly {
      * @return the locators
      */
     public static List<BeaconLocator> locators(BootstrapSettings settings, DnsResolver resolver, HttpClient client) {
+        return new ArrayList<>(locatorsByName(settings, resolver, client).values());
+    }
+
+    /**
+     * The locators the settings ask for, by their order name, so a composer
+     * can place {@code seeds} and {@code multicast} among them by position
+     * (review-110226-deadcode-parity B3).
+     *
+     * @param settings the merged settings of one group
+     * @param resolver the resolver
+     * @param client   the HTTP client, or null for a default
+     * @return the locators by name, in order
+     */
+    public static java.util.LinkedHashMap<String, BeaconLocator> locatorsByName(BootstrapSettings settings,
+                                                                               DnsResolver resolver,
+                                                                               HttpClient client) {
         Objects.requireNonNull(settings, "settings");
         Objects.requireNonNull(resolver, "resolver");
         UrlLocator.Options options = urlOptions(settings);
         UrlLocator follower = UrlLocator.follower(options, client);
         DomainFinder domains = domains(settings);
-        List<BeaconLocator> out = new ArrayList<>();
+        java.util.LinkedHashMap<String, BeaconLocator> out = new java.util.LinkedHashMap<>();
         for (String name : settings.orderOrDefault()) {
-            switch (name.trim().toLowerCase(Locale.ROOT)) {
-                case "dns-sd" -> out.add(new DnsSdLocator(domains, resolver, settings.dnsSdAnyGroupOrDefault(), follower)
+            String key = name.trim().toLowerCase(Locale.ROOT);
+            switch (key) {
+                case "dns-sd" -> out.put(key, new DnsSdLocator(domains, resolver, settings.dnsSdAnyGroupOrDefault(), follower)
                         .browsingUdp(settings.dnsSdUdpOrDefault()));
-                case "dns-txt" -> out.add(new TxtLocator(domains, resolver, follower));
+                case "dns-txt" -> out.put(key, new TxtLocator(domains, resolver, follower));
                 case "dns-srv" -> {
                     if (settings.getDnsSrv() != null && !settings.getDnsSrv().isBlank()) {
-                        out.add(new SrvLocator(settings.getDnsSrv(), settings.getDnsSrvScheme(), resolver));
+                        out.put(key, new SrvLocator(settings.getDnsSrv(), settings.getDnsSrvScheme(), resolver));
                     }
                 }
                 case "k8s" -> {
                     BootstrapSettings.K8s k8s = settings.getK8s();
                     if (k8s != null && k8s.getService() != null && !k8s.getService().isBlank()) {
-                        out.add(new K8sLocator(k8s.getService(), k8s.getNamespace(), k8s.getPortName(),
+                        out.put(key, new K8sLocator(k8s.getService(), k8s.getNamespace(), k8s.getPortName(),
                                 k8s.getClusterDomain(), k8s.getProtocol(), settings.getDnsSrvScheme(), resolver));
                     }
                 }
@@ -78,16 +95,16 @@ public final class LocatorAssembly {
                                 urls.add(URI.create(url.trim()));
                             }
                         }
-                        out.add(new UrlLocator(urls, options, client));
+                        out.put(key, new UrlLocator(urls, options, client));
                     }
                 }
                 case "document" -> {
                     if (settings.getDocument() != null && !settings.getDocument().isBlank()) {
-                        out.add(StaticDocumentLocator.of(settings.getDocument(), options));
+                        out.put(key, StaticDocumentLocator.of(settings.getDocument(), options));
                     }
                 }
                 case "seeds", "multicast" -> {
-                    // The host's.
+                    // The host's; the composer places them by this position.
                 }
                 default -> throw new IllegalStateException("agentspaces.bootstrap.order names an unknown locator '"
                         + name + "'; known: " + BootstrapSettings.DEFAULT_ORDER);
@@ -116,6 +133,7 @@ public final class LocatorAssembly {
     public static UrlLocator.Options urlOptions(BootstrapSettings settings) {
         UrlLocator.Options options = UrlLocator.Options.defaults()
                 .withAllowPlain(settings.urlAllowPlainOrDefault())
+                .withAllowUnsigned(settings.urlAllowUnsignedOrDefault())
                 .withAllowPrivate(settings.urlAllowPrivateOrDefault())
                 .withTimeout(settings.timeoutOrDefault());
         Set<String> hosts = new HashSet<>();

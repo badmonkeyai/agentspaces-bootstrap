@@ -21,7 +21,8 @@ import ai.badmonkey.agentspaces.bootstrap.DnsResolver;
 import ai.badmonkey.agentspaces.bootstrap.LocatorAssembly;
 import ai.badmonkey.agentspaces.peering.bootstrap.BootstrapChain;
 import ai.badmonkey.agentspaces.peering.bootstrap.SeedsLocator;
-import ai.badmonkey.agentspaces.spring.BootstrapChainFactory;
+import ai.badmonkey.agentspaces.peering.bootstrap.BootstrapChainFactory;
+import ai.badmonkey.agentspaces.peering.bootstrap.MulticastLocator;
 
 import java.net.http.HttpClient;
 import java.util.ArrayList;
@@ -49,6 +50,8 @@ import java.util.Objects;
  */
 public final class ChainComposer {
 
+    private static final System.Logger LOG = System.getLogger(ChainComposer.class.getName());
+
     private ChainComposer() {
     }
 
@@ -73,18 +76,30 @@ public final class ChainComposer {
                 }
             });
         }
-        HttpClient client = HttpClient.newBuilder().connectTimeout(fleetBlock.timeoutOrDefault()).build();
-        validate(fleetBlock, groups, resolver, client);
-        return (group, locators) -> compose(BootstrapSettings.merge(fleetBlock, groups.get(group.getName())),
-                locators, resolver, client);
+        // One client per distinct connect timeout, so a group's own timeout applies to its
+        // document fetches (review-110226-deadcode-parity B6).
+        Map<java.time.Duration, HttpClient> clients = new java.util.concurrent.ConcurrentHashMap<>();
+        java.util.function.Function<java.time.Duration, HttpClient> clientFor = timeout ->
+                clients.computeIfAbsent(timeout, t -> HttpClient.newBuilder().connectTimeout(t).build());
+        validate(fleetBlock, groups, resolver, clientFor.apply(fleetBlock.timeoutOrDefault()));
+        return (groupName, locators) -> {
+            BootstrapSettings merged = BootstrapSettings.merge(fleetBlock, groups.get(groupName));
+            warnWhenLeftOut(groupName, merged, locators);
+            return compose(merged, locators, resolver, clientFor.apply(merged.timeoutOrDefault()));
+        };
     }
 
     /**
-     * The chain of one group.
+     * The chain of one group. The {@code order} governs the position of
+     * {@code seeds}, {@code multicast}, and every property-built locator; a
+     * name the order leaves out is not asked (the host is warned at startup
+     * about seeds and multicast it configured). The host's other locators,
+     * its {@code BeaconLocator} beans, are always asked, before the rest under
+     * {@code bean-locators-first} and after them otherwise.
      *
      * @param settings the group's merged settings; null or empty means the default chain
-     * @param incoming the host's locators: the seeds locator first, then the applicable beans
-     * @param resolver the resolver
+     * @param incoming the host's locators: the seeds locator, the multicast locator when on, then the beans
+     * @param resolver the resolver, used for name expansion even with no key set; null only with empty settings
      * @param client   the HTTP client the document locators share, or null for a default
      * @return the locator the node joins with
      */
@@ -92,23 +107,48 @@ public final class ChainComposer {
                                         DnsResolver resolver, HttpClient client) {
         Objects.requireNonNull(incoming, "incoming");
         if (settings == null || settings.isEmpty()) {
-            return BootstrapChain.builder().addAll(incoming).build();
+            BootstrapChain.Builder plain = BootstrapChain.builder().addAll(incoming);
+            if (resolver != null) {
+                plain.expandNames(host -> addresses(resolver, host));
+            }
+            return plain.build();
         }
         Objects.requireNonNull(resolver, "resolver");
         List<BeaconLocator> seeds = new ArrayList<>();
+        List<BeaconLocator> multicast = new ArrayList<>();
         List<BeaconLocator> beans = new ArrayList<>();
         for (BeaconLocator locator : incoming) {
-            (SeedsLocator.NAME.equals(locator.name()) ? seeds : beans).add(locator);
+            if (SeedsLocator.NAME.equals(locator.name())) {
+                seeds.add(locator);
+            } else if (MulticastLocator.NAME.equals(locator.name())) {
+                multicast.add(locator);
+            } else {
+                beans.add(locator);
+            }
         }
-        List<BeaconLocator> fromProperties = LocatorAssembly.locators(settings, resolver, client);
+        Map<String, BeaconLocator> fromProperties = LocatorAssembly.locatorsByName(settings, resolver, client);
+        List<BeaconLocator> ordered = new ArrayList<>();
+        for (String name : names(settings)) {
+            if (SeedsLocator.NAME.equals(name)) {
+                ordered.addAll(seeds);
+            } else if (MulticastLocator.NAME.equals(name)) {
+                ordered.addAll(multicast);
+            } else if (fromProperties.containsKey(name)) {
+                ordered.add(fromProperties.get(name));
+            }
+        }
         BootstrapChain.Builder builder = BootstrapChain.builder();
-        if (names(settings).contains(SeedsLocator.NAME)) {
-            builder.addAll(seeds);
-        }
         if (settings.beanLocatorsFirstOrDefault()) {
-            builder.addAll(beans).addAll(fromProperties);
+            // Beans go before the property-built locators and after the host's own
+            // (seeds, multicast) that the order places ahead of them.
+            int firstProperty = 0;
+            while (firstProperty < ordered.size() && !fromProperties.containsValue(ordered.get(firstProperty))) {
+                firstProperty++;
+            }
+            builder.addAll(ordered.subList(0, firstProperty)).addAll(beans)
+                    .addAll(ordered.subList(firstProperty, ordered.size()));
         } else {
-            builder.addAll(fromProperties).addAll(beans);
+            builder.addAll(ordered).addAll(beans);
         }
         builder.timeout(settings.timeoutOrDefault());
         builder.acceptGroupIdFrom(LocatorAssembly.acceptGroupIdFrom(settings, resolver));
@@ -118,14 +158,7 @@ public final class ChainComposer {
         if (!settings.expandNamesOrDefault()) {
             builder.expandNames(null);
         } else {
-            // ISSUE-BootstrapCore FR-8: names expand through the host's resolver (DoH, DNSSEC), not the platform's.
-            builder.expandNames(host -> {
-                try {
-                    return resolver.addresses(host);
-                } catch (java.io.IOException e) {
-                    return java.util.List.of();
-                }
-            });
+            builder.expandNames(host -> addresses(resolver, host));
         }
         // ISSUE-BootstrapCore FR-3, FR-4, DB-C-12: the node paces, requires, and traces by the chain's policy.
         builder.locatePolicy(new ai.badmonkey.agentspaces.api.spi.LocatePolicy(
@@ -133,6 +166,14 @@ public final class ChainComposer {
                 java.util.Optional.ofNullable(settings.getRefreshMax()),
                 settings.requireOrDefault(), settings.traceOrDefault()));
         return builder.build();
+    }
+
+    private static java.util.List<java.net.InetAddress> addresses(DnsResolver resolver, String host) {
+        try {
+            return resolver.addresses(host);
+        } catch (java.io.IOException e) {
+            return java.util.List.of();
+        }
     }
 
     /**
@@ -164,6 +205,69 @@ public final class ChainComposer {
                     + group + "')";
             throw new IllegalStateException(where + ": " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * One WARNING per group at startup for each host locator its effective
+     * {@code order} leaves out: configured seeds, or the multicast locator
+     * when it is on (ISSUE-BootstrapRobustness FR-3, review B3). The chain is
+     * still composed as the operator asked.
+     */
+    static void warnWhenLeftOut(String groupName, BootstrapSettings merged, List<BeaconLocator> incoming) {
+        for (String message : new String[] {seedsLeftOut(groupName, merged, incoming),
+                                            multicastLeftOut(groupName, merged, incoming)}) {
+            if (message != null) {
+                LOG.log(System.Logger.Level.WARNING, message);
+            }
+        }
+    }
+
+    /** Kept for callers of the 0.5.0 name; see {@link #warnWhenLeftOut}. */
+    static void warnWhenSeedsAreLeftOut(String groupName, BootstrapSettings merged, List<BeaconLocator> incoming) {
+        warnWhenLeftOut(groupName, merged, incoming);
+    }
+
+    /**
+     * The seeds warning, or null when the order names {@code seeds}, the
+     * settings are empty (the default chain keeps every incoming locator), or
+     * the group has no seed to lose.
+     *
+     * @param groupName the group
+     * @param merged    its merged settings
+     * @param incoming  the host's locators, the seeds locator among them
+     * @return the message, or null when there is nothing to warn about
+     */
+    static String seedsLeftOut(String groupName, BootstrapSettings merged, List<BeaconLocator> incoming) {
+        if (merged == null || merged.isEmpty() || names(merged).contains(SeedsLocator.NAME)) {
+            return null;
+        }
+        for (BeaconLocator locator : incoming) {
+            if (locator instanceof SeedsLocator seeds && !seeds.isEmpty()) {
+                int count = seeds.locate(new ai.badmonkey.agentspaces.api.spi.BeaconRequest(groupName,
+                        java.util.Optional.empty(), "tcp", java.util.Set.of("tcp"))).endpoints().size();
+                return "group '" + groupName + "' lists " + count + " seed(s) but its bootstrap order "
+                        + names(merged) + " leaves out '" + SeedsLocator.NAME + "', so the seeds are never asked;"
+                        + " add '" + SeedsLocator.NAME + "' to agentspaces.bootstrap.order or"
+                        + " agentspaces.groups[].bootstrap.order";
+            }
+        }
+        return null;
+    }
+
+    /** The multicast warning, or null when the order names {@code multicast} or the host passed none. */
+    static String multicastLeftOut(String groupName, BootstrapSettings merged, List<BeaconLocator> incoming) {
+        if (merged == null || merged.isEmpty() || names(merged).contains(MulticastLocator.NAME)) {
+            return null;
+        }
+        for (BeaconLocator locator : incoming) {
+            if (MulticastLocator.NAME.equals(locator.name())) {
+                return "group '" + groupName + "' has the multicast beacon on but its bootstrap order "
+                        + names(merged) + " leaves out '" + MulticastLocator.NAME + "', so it is never asked;"
+                        + " add '" + MulticastLocator.NAME + "' to agentspaces.bootstrap.order or"
+                        + " agentspaces.groups[].bootstrap.order";
+            }
+        }
+        return null;
     }
 
     private static List<String> names(BootstrapSettings settings) {

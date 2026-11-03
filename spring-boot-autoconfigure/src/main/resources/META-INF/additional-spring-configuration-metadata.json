@@ -26,7 +26,7 @@
     {
       "name": "agentspaces.bootstrap.order",
       "type": "java.util.List<java.lang.String>",
-      "description": "The chain order; a locator absent from the list is not asked. Fleet-wide default.",
+      "description": "The chain order for seeds, multicast, and the property-built locators; a name absent from the list is not asked, and the host warns about seeds or multicast it configured and the order leaves out. BeaconLocator beans are always asked. Fleet-wide default.",
       "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
       "defaultValue": [
         "seeds",
@@ -104,6 +104,13 @@
       "defaultValue": false
     },
     {
+      "name": "agentspaces.bootstrap.url-allow-unsigned",
+      "type": "java.lang.Boolean",
+      "description": "Accept a beacon document that carries no signature; off, because an unsigned document lets its publisher choose the seeds. Fleet-wide default.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "defaultValue": false
+    },
+    {
       "name": "agentspaces.bootstrap.url-allow-hosts",
       "type": "java.util.List<java.lang.String>",
       "description": "The hosts a beacon document URL may name; empty for any. Fleet-wide default.",
@@ -133,7 +140,7 @@
     {
       "name": "agentspaces.bootstrap.require",
       "type": "java.lang.Boolean",
-      "description": "Fail startup when no locator answered within the deadline. Fleet-wide default.",
+      "description": "Fail startup, naming the group, when the first locate answers no endpoint and no founding. Fleet-wide default.",
       "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
       "defaultValue": false
     },
@@ -178,7 +185,7 @@
     {
       "name": "agentspaces.bootstrap.k8s.namespace",
       "type": "java.lang.String",
-      "description": "The service's namespace; empty for the pod's own. Fleet-wide default.",
+      "description": "The service's namespace; `default` when empty. Fleet-wide default.",
       "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings"
     },
     {
@@ -206,7 +213,7 @@
     {
       "name": "agentspaces.groups[].bootstrap.order",
       "type": "java.util.List<java.lang.String>",
-      "description": "The chain order; a locator absent from the list is not asked. Per group, over the fleet-wide block.",
+      "description": "The chain order for seeds, multicast, and the property-built locators; a name absent from the list is not asked. BeaconLocator beans are always asked. Per group, over the fleet-wide block.",
       "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
       "defaultValue": [
         "seeds",
@@ -284,6 +291,13 @@
       "defaultValue": false
     },
     {
+      "name": "agentspaces.groups[].bootstrap.url-allow-unsigned",
+      "type": "java.lang.Boolean",
+      "description": "Accept a beacon document that carries no signature; off, because an unsigned document lets its publisher choose the seeds. Per group, over the fleet-wide block.",
+      "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
+      "defaultValue": false
+    },
+    {
       "name": "agentspaces.groups[].bootstrap.url-allow-hosts",
       "type": "java.util.List<java.lang.String>",
       "description": "The hosts a beacon document URL may name; empty for any. Per group, over the fleet-wide block.",
@@ -313,7 +327,7 @@
     {
       "name": "agentspaces.groups[].bootstrap.require",
       "type": "java.lang.Boolean",
-      "description": "Fail startup when no locator answered within the deadline. Per group, over the fleet-wide block.",
+      "description": "Fail startup, naming the group, when the first locate answers no endpoint and no founding. Per group, over the fleet-wide block.",
       "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings",
       "defaultValue": false
     },
@@ -358,7 +372,7 @@
     {
       "name": "agentspaces.groups[].bootstrap.k8s.namespace",
       "type": "java.lang.String",
-      "description": "The service's namespace; empty for the pod's own. Per group, over the fleet-wide block.",
+      "description": "The service's namespace; `default` when empty. Per group, over the fleet-wide block.",
       "sourceType": "ai.badmonkey.agentspaces.bootstrap.BootstrapSettings"
     },
     {

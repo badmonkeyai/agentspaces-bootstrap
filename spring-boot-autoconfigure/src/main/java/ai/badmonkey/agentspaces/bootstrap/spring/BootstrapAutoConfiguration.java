@@ -66,9 +66,9 @@ public class BootstrapAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
     public BootstrapChainFactory bootstrapChainFactory(BootstrapProperties properties, DnsResolver resolver) {
-        if (properties.isEmpty()) {
-            return BootstrapChainFactory.defaults();
-        }
-        return ChainComposer.factory(properties.getBootstrap(), properties.groupSettings(), resolver);
+        // The composer handles the no-key case too, so a DnsResolver bean expands seed
+        // names even when no bootstrap key is set (review-110226-deadcode-parity B5).
+        return BootstrapChainFactory.of(
+                ChainComposer.factory(properties.getBootstrap(), properties.groupSettings(), resolver));
     }
 }

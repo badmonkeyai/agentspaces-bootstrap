@@ -81,9 +81,9 @@ public class BootstrapFactory {
     @Singleton
     @Requires(missingBeans = BootstrapChainFactory.class)
     public BootstrapChainFactory bootstrapChainFactory(BootstrapTree tree, DnsResolver resolver) {
-        if (tree.isEmpty()) {
-            return BootstrapChainFactory.defaults();
-        }
-        return ChainComposer.factory(tree.getBootstrap(), tree.groupSettings(), resolver);
+        // The composer handles the no-key case too, so a DnsResolver bean expands seed
+        // names even when no bootstrap key is set (review-110226-deadcode-parity B5).
+        return BootstrapChainFactory.of(
+                ChainComposer.factory(tree.getBootstrap(), tree.groupSettings(), resolver));
     }
 }

@@ -18,10 +18,11 @@ package ai.badmonkey.agentspaces.bootstrap;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * The {@code agentspaces.bootstrap.*} keys (SRAD appendix D), bound by the
- * Spring Boot and Micronaut modules and by the plain-Java runtime. The same
+ * Spring Boot and Micronaut modules, and by any host that binds the same keys. The same
  * class serves the fleet-wide block and a group's block; {@link #merge}
  * lays a group's set values over the fleet's. Plain getters and setters so
  * every binder reads it.
@@ -43,6 +44,7 @@ public class BootstrapSettings {
     private String beaconPeer;
     private String url;
     private Boolean urlAllowPlain;
+    private Boolean urlAllowUnsigned;
     private List<String> urlAllowHosts;
     private Boolean urlAllowPrivate;
     private Boolean expandNames;
@@ -126,6 +128,7 @@ public class BootstrapSettings {
         out.beaconPeer = g.beaconPeer != null ? g.beaconPeer : f.beaconPeer;
         out.url = g.url != null ? g.url : f.url;
         out.urlAllowPlain = g.urlAllowPlain != null ? g.urlAllowPlain : f.urlAllowPlain;
+        out.urlAllowUnsigned = g.urlAllowUnsigned != null ? g.urlAllowUnsigned : f.urlAllowUnsigned;
         out.urlAllowHosts = g.urlAllowHosts != null ? g.urlAllowHosts : f.urlAllowHosts;
         out.urlAllowPrivate = g.urlAllowPrivate != null ? g.urlAllowPrivate : f.urlAllowPrivate;
         out.expandNames = g.expandNames != null ? g.expandNames : f.expandNames;
@@ -160,10 +163,14 @@ public class BootstrapSettings {
         return timeout == null ? Duration.ofSeconds(3) : timeout;
     }
 
+    /** @deprecated since 0.5.0: unset pacing falls through to the node's own 30 s and 10 min; nothing reads this. Goes in 0.6.0. */
+    @Deprecated(since = "0.5.0", forRemoval = true)
     public Duration refreshMinOrDefault() {
         return refreshMin == null ? Duration.ofSeconds(30) : refreshMin;
     }
 
+    /** @deprecated since 0.5.0: see {@link #refreshMinOrDefault()}. */
+    @Deprecated(since = "0.5.0", forRemoval = true)
     public Duration refreshMaxOrDefault() {
         return refreshMax == null ? Duration.ofMinutes(10) : refreshMax;
     }
@@ -178,6 +185,11 @@ public class BootstrapSettings {
 
     public boolean urlAllowPlainOrDefault() {
         return Boolean.TRUE.equals(urlAllowPlain);
+    }
+
+    /** Whether a beacon document without a signature is accepted; off by default (ISSUE-BootstrapRobustness Q4). */
+    public boolean urlAllowUnsignedOrDefault() {
+        return Boolean.TRUE.equals(urlAllowUnsigned);
     }
 
     public List<String> urlAllowHostsOrDefault() {
@@ -208,11 +220,46 @@ public class BootstrapSettings {
         return Boolean.TRUE.equals(dnsSdAnyGroup);
     }
 
+    /**
+     * Whether no key is set in a fleet block or any group block: the one rule
+     * both hosts use (review-110226-deadcode-parity D10).
+     *
+     * @param fleet  the fleet block, or null
+     * @param groups the group blocks by name
+     * @return true when nothing is set anywhere
+     */
+    public static boolean isEmpty(BootstrapSettings fleet, Map<String, BootstrapSettings> groups) {
+        if (fleet != null && !fleet.isEmpty()) {
+            return false;
+        }
+        if (groups != null) {
+            for (BootstrapSettings settings : groups.values()) {
+                if (settings != null && !settings.isEmpty()) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /**
+     * The merged settings of one group: its block over the fleet's.
+     *
+     * @param fleet     the fleet block, or null
+     * @param groups    the group blocks by name
+     * @param groupName the group
+     * @return the merged settings, empty when neither block is set
+     */
+    public static BootstrapSettings settingsFor(BootstrapSettings fleet, Map<String, BootstrapSettings> groups,
+                                                String groupName) {
+        return merge(fleet, groups == null ? null : groups.get(groupName));
+    }
+
     /** Whether any key is set (a fleet with no block at all keeps today's behaviour). */
     public boolean isEmpty() {
         return domain == null && order == null && firstWins == null && timeout == null && refreshMin == null
                 && refreshMax == null && acceptGroupIdFrom == null && insecureGroupId == null && beaconPeer == null
-                && url == null && urlAllowPlain == null && urlAllowHosts == null && urlAllowPrivate == null
+                && url == null && urlAllowPlain == null && urlAllowUnsigned == null && urlAllowHosts == null && urlAllowPrivate == null
                 && expandNames == null && beanLocatorsFirst == null && require == null && trace == null
                 && dnsSrv == null && dnsSrvScheme == null && dnsSdAnyGroup == null && dnsSdUdp == null && document == null && k8s == null;
     }
@@ -305,6 +352,14 @@ public class BootstrapSettings {
 
     public void setUrlAllowPlain(Boolean urlAllowPlain) {
         this.urlAllowPlain = urlAllowPlain;
+    }
+
+    public Boolean getUrlAllowUnsigned() {
+        return urlAllowUnsigned;
+    }
+
+    public void setUrlAllowUnsigned(Boolean urlAllowUnsigned) {
+        this.urlAllowUnsigned = urlAllowUnsigned;
     }
 
     public List<String> getUrlAllowHosts() {

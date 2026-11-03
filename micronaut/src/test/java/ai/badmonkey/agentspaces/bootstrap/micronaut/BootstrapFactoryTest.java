@@ -46,7 +46,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class BootstrapFactoryTest {
 
     private static int freePort() {
-        try (ServerSocket socket = new ServerSocket(0)) {
+        try (ServerSocket socket = new ServerSocket(0, 50, java.net.InetAddress.getLoopbackAddress())) {
             return socket.getLocalPort();
         } catch (IOException e) {
             throw new IllegalStateException(e);
@@ -184,5 +184,57 @@ class BootstrapFactoryTest {
             assertThat(ctx.containsBean(BootstrapChainFactory.class)).isFalse();
             assertThat(ctx.containsBean(DnsResolver.class)).isFalse();
         }
+    }
+
+    /** ISSUE-BootstrapRobustness FR-1: a join by id through dns-srv alone, no seed configured, starts and is admitted. */
+    @Test
+    void aJoinByIdThroughThePropertyBuiltChainAloneStarts() throws Exception {
+        ai.badmonkey.agentspaces.peering.node.SignedGroupAdvertisement founding =
+                ai.badmonkey.agentspaces.peering.node.GroupFounding.found(
+                        ai.badmonkey.agentspaces.identity.PeerIdentity.generate(), "mn-join-by-id",
+                        ai.badmonkey.agentspaces.api.ad.GroupAdvertisement.MembershipPolicy.OPEN,
+                        ai.badmonkey.agentspaces.api.space.ConflictStrategyType.LEASE_RACE,
+                        ai.badmonkey.agentspaces.api.ad.GroupAdvertisement.GossipParameters.defaults(),
+                        java.time.Instant.now(), Duration.ofDays(1));
+        String document = java.util.Base64.getEncoder().encodeToString(
+                ai.badmonkey.agentspaces.common.codec.CborCodec.defaultCodec().toBytes(founding));
+        int seedPort = freePort();
+        InMemoryDns.RECORDS.remove("_aspace._tcp.mn-join.test").srv("_aspace._tcp.mn-join.test", 10, 50, seedPort, "127.0.0.1");
+        Map<String, Object> seedProps = peer(seedPort, "unused");
+        seedProps.remove("agentspaces.groups[0].founding");
+        seedProps.put("agentspaces.groups[0].founding-document", document);
+        Map<String, Object> joinerProps = peer(freePort(), "unused");
+        joinerProps.remove("agentspaces.groups[0].founding");
+        joinerProps.put("agentspaces.groups[0].join", "aspace://" + founding.advertisement().group().value());
+        joinerProps.put("agentspaces.groups[0].join-timeout-millis", "10000");
+        joinerProps.put("test.in-memory-dns", "true");
+        joinerProps.put("agentspaces.bootstrap.order", "seeds,dns-srv");
+        joinerProps.put("agentspaces.groups[0].bootstrap.dns-srv", "_aspace._tcp.mn-join.test");
+        try (ApplicationContext seed = ApplicationContext.run(seedProps);
+             ApplicationContext joiner = ApplicationContext.run(joinerProps)) {
+            AgentSpaces seedSpaces = seed.getBean(AgentSpaces.class);
+            PeerNode joinerNode = joiner.getBean(PeerNode.class);
+            boolean admitted = false;
+            for (int i = 0; i < 100 && !admitted; i++) {
+                admitted = seedSpaces.group("fleet").runtime().membership().member(joinerNode.peerId()).isPresent();
+                Thread.sleep(50);
+            }
+            assertThat(admitted).as("no seed is needed when the chain can locate").isTrue();
+            assertThat(joinerNode.lastBeaconHint(seedSpaces.group("fleet").runtime().id()))
+                    .hasValueSatisfying(h -> assertThat(h.evidence()).contains("SRV _aspace._tcp.mn-join.test"));
+        }
+    }
+
+    /** FR-2: a join by id with nothing to ask refuses startup and names the remedies. */
+    @Test
+    void aJoinByIdWithNothingToAskRefusesStartup() {
+        Map<String, Object> joinerProps = peer(freePort(), "unused");
+        joinerProps.remove("agentspaces.groups[0].founding");
+        joinerProps.put("agentspaces.groups[0].join", "aspace://zNobodyServesThis");
+        joinerProps.put("agentspaces.bootstrap.order", "seeds");
+        assertThatThrownBy(() -> ApplicationContext.run(joinerProps).close())
+                .hasStackTraceContaining("group 'fleet' joins by GroupId URI but its bootstrap chain has nothing to ask")
+                .hasStackTraceContaining("seeds (nothing configured)")
+                .hasStackTraceContaining("BeaconLocator bean");
     }
 }

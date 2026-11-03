@@ -107,7 +107,7 @@ The word **beacon** names three different things. This section keeps them apart.
 }
 ```
 
-`research-fleet` uses a text, so this group entry has no founding. Partner Inc runs its own beacon for `partner-fleet`, a group with a signed founding, so its document also carries a `founding` field: the base64 of the signed founding advertisement. Acme's `summarizer` holds `join: aspace://q9c2b...`, that document's URL, and one seed: the address of Partner Inc's beacon. The Spring Boot and Micronaut hosts need that seed to start a `join:` group (see the note under the chain example below). The `url` locator then fetches the document, `summarizer` checks the founding against the id, and it dials the seeds the document lists. A Python or TypeScript peer needs only the id and the URL.
+`research-fleet` uses a text, so this group entry has no founding. Partner Inc runs its own beacon for `partner-fleet`, a group with a signed founding, so its document also carries a `founding` field: the base64 of the signed founding advertisement. Acme's `summarizer` holds `join: aspace://q9c2b...` and that document's URL, and no seed list. The `url` locator fetches the document, `summarizer` checks the founding against the id, and it dials the seeds the document lists. A Python or TypeScript peer takes the id and the URL the same way.
 
 ### Chain
 
@@ -126,21 +126,20 @@ agentspaces:
         url: https://agentspaces.corp.example/.well-known/agentspaces/beacon.json
     - name: partner-fleet
       join: aspace://q9c2b...
-      seeds: [ "beacon.partner.example:7500" ]
       bootstrap:
-        order: [ seeds, url ]                  # partner-fleet's chain
+        order: [ url ]                         # partner-fleet's chain
         url: https://partner.example/.well-known/agentspaces/beacon.json
         beacon-peer: z6Mk...partnerBeacon      # the PeerId that must have signed the document
 ```
 
-A group that joins by id needs at least one configured seed besides its chain. When the Spring Boot and Micronaut hosts check that a `join:` group has a way in, they count the configured seeds, `BeaconLocator` beans, and the multicast locator, and they ignore the locators that `agentspaces.bootstrap.*` builds. A `join:` group with only a `bootstrap` block therefore fails at startup with "joins by GroupId URI but configures no seeds and no locator", so `partner-fleet` lists its beacon's address under `seeds`. A group started from a `founding:` text needs no seed for the check, and neither does a Python or TypeScript peer.
+A group that joins by id needs something to ask: a seed, a locator in its `order` with its key set, or a `BeaconLocator` bean. The Spring Boot and Micronaut hosts check the composed chain before they join and refuse at once, naming the chain and the three remedies, when it has nothing to ask. A `join:` group with only a `bootstrap` block starts. The join keeps asking inside `join-timeout-millis`: it dials again every endpoint that refused, asks the chain again while nothing is connected, and reports the locates and the endpoints when the time runs out. An `order` that leaves out `seeds` while the group lists some logs one warning at startup, and the seeds stay out. A group started from a `founding:` text has no signed founding and cannot be joined by id; the report says so when the seeds it reached sent nothing.
 
 **How a chain answers.** When a peer asks a chain for a group, the chain works through these steps:
 
 1. It picks the locators that apply to that group. A locator you define as a bean can limit itself to one group.
 2. By default it asks all of them at once, each with its own deadline (`timeout`, 3 seconds). A locator that fails or times out contributes nothing, and the others carry on.
 3. It merges the answers in chain order, so the first locator's addresses rank highest, and it removes duplicates.
-4. It keeps the first founding document it finds. It accepts a group id claim only from the locators you named in `accept-group-id-from`.
+4. It keeps the first founding document it finds. It would accept a group id claim only from the locators you named in `accept-group-id-from`, and only for a request without an id; every join in 0.5.0 carries its id, so the claim is never used today.
 5. It expands names into addresses last.
 6. It sets the answer's lifetime to the shortest lifetime among the locators that contributed.
 
@@ -178,8 +177,9 @@ A chain suggests where to dial. The peer decides what to believe:
 
 - **Addresses are only dialed.** Every connection goes through the same handshake, signature verification, and admission policy as a connection from any stranger.
 - **A founding is verified when there is one.** When a peer joins by id, it checks the founding against the id it was configured with. A group started from a text has no founding, so the peer relies on the handshake, the signature checks, and the group's admission policy, as it does for every connection.
-- **A group id claim needs a named source.** A locator can say what it believes the group id is. The chain accepts that claim only from the locators listed in `accept-group-id-from`, which default to `url` and `document`, the sources that arrive over HTTPS or from a file you control. Plain DNS answers carry no signature. Naming `dns-sd`, `dns-txt`, `dns-srv`, `k8s`, or `multicast` there stops the application at startup unless you set `insecure-group-id: true` or give the host a `DnsResolver` whose answers are authenticated, such as the DNSSEC-validating one in `agentspaces-bootstrap-dns`.
-- **A document can be pinned.** `beacon-peer` names the PeerId that must have signed any document. The `url` locator also fetches over HTTPS by default, caps the size, follows at most two redirects on the same host, and refuses private addresses unless `url-allow-private` allows them.
+- **A group id claim needs a named source, and is not used yet.** A locator can say what it believes the group id is. The chain would accept that claim only from the locators listed in `accept-group-id-from` (default `url` and `document`), and only for a request that carries no id. Every join in 0.5.0 carries the id it was configured with, so in this release the key does one thing: it refuses startup when it names an unauthenticated locator (`dns-*`, `k8s`, `multicast`) without `insecure-group-id: true`. A join by name, where DNS or a document supplies the id, is a roadmap item.
+- **Plain Java reaches the locators, not the starter's checks.** A `PeerNode` user without Spring or Micronaut builds locators from this library, composes a `BootstrapChain` (or calls `ChainComposer.compose` with a `BootstrapSettings`), and passes it to `joinGroup`. The startup refusal for a chain with nothing to ask, the `founding-document` decoding, the `join-credential` hint, and the "text-founded group" advice are the hosts' work; plain Java asks `locator.canLocate()` itself and gets a `FoundingTimeoutException` with the counts when a join runs out.
+- **A document must be signed.** A beacon signs the document it serves, and a reader refuses one that carries no signature unless `url-allow-unsigned` is set, because an unsigned document lets whoever published it choose the seeds. `beacon-peer` names the PeerId that must have signed any document. The `url` locator also fetches over HTTPS by default, caps the size, follows at most two redirects on the same host, and refuses private addresses unless `url-allow-private` allows them.
 
 *Example.* An attacker poisons the DNS answer for a seed name of Partner Inc's `partner-fleet`, and `summarizer` dials the attacker's host while joining that group by id. The host cannot show a founding that hashes to `aspace://q9c2b...`, so `summarizer` does not join it and asks the chain again later.
 
@@ -209,7 +209,7 @@ A **host** is the framework that creates your peer: the Spring Boot starter (`ag
 | Multicast beacon | the opt-in LAN datagram that members send | a lab on one network segment |
 | Rendezvous | a role for a peer that caches many members' advertisements and answers discovery queries | `beacon.corp.example` |
 | Chain | the ordered locators one group uses | `[seeds, dns-sd, url]` |
-| Group's chain | each group has its own chain, built from fleet-wide settings plus the group's overrides | `research-fleet` uses `[seeds, dns-sd, url]` and `partner-fleet` uses `[seeds, url]` |
+| Group's chain | each group has its own chain, built from fleet-wide settings plus the group's overrides | `research-fleet` uses `[seeds, dns-sd, url]` and `partner-fleet` uses `[url]` |
 | Seeds first | `seeds` leads the default order, so the configured list is asked first and ranks first | `seeds.corp.example` heads the merged answer |
 | First-wins | a chain setting that asks one locator at a time and stops at the first that returns addresses | `first-wins: true` |
 | Host | the framework that creates the peer and builds the chains | Spring Boot or Micronaut |
@@ -305,7 +305,7 @@ class FleetBootstrapConfig {
 
     /** Replace the resolver (DNS over HTTPS, DNSSEC): the agentspaces-bootstrap-dns project. */
     @Bean
-    DnsResolver dnsResolver() { return new DnsJavaResolver("https://dns.corp.example/dns-query"); }
+    DnsResolver dnsResolver() { return DnsJavaResolver.builder().dohUrl("https://dns.corp.example/dns-query").build(); }
 
     /** Touch the node builder without replacing the node (core starter seam). */
     @Bean
@@ -410,7 +410,7 @@ services:
 The workers use the same founding text as the seeds. A group started from a
 text has no signed founding to serve, so a worker that set
 `AGENTSPACES_GROUPS_0_JOIN` to the group's id would wait ten seconds and then
-fail with `no seed served a verified founding advertisement`.
+fail with `no verified founding for <id> within 10000 ms: ... the connected peers sent no founding for this id`, and the starter adds that a group started from a text has no signed founding.
 
 ## Properties
 
@@ -420,15 +420,16 @@ per group under `agentspaces.groups[].bootstrap.*` (a group's set keys win).
 | Key | Default | Meaning |
 |---|---|---|
 | `domain` | `auto` | a list of domains, or `auto` for the host's search list, or empty for none |
-| `order` | `[seeds, dns-sd, dns-txt, dns-srv, k8s, url, document, multicast]` | chain order; a locator absent from the list is not asked (`dns-srv`, `k8s`, `url`, `document` only appear when their key is set) |
+| `order` | `[seeds, dns-sd, dns-txt, dns-srv, k8s, url, document, multicast]` | chain order for `seeds`, `multicast`, and the property-built locators; a name absent from the list is not asked, and the host warns at startup about seeds or multicast it configured and the order leaves out (`dns-srv`, `k8s`, `url`, `document` only appear when their key is set). `BeaconLocator` beans are always asked, after these, or before them under `bean-locators-first` |
 | `first-wins` | `false` | stop at the first locator with endpoints |
 | `timeout` | `PT3S` | per locator |
-| `refresh-min` / `refresh-max` | `PT30S` / `PT10M` | re-ask pacing on an empty view (the chain's `LocatePolicy`; the node honours it) |
-| `accept-group-id-from` | `[url, document]` | locators whose GroupId claim is honoured when none is configured |
+| `refresh-min` / `refresh-max` | unset | re-ask pacing on an empty view (the chain's `LocatePolicy`); unset falls through to the node's own pacing, 30 s and 10 min unless a `PeerNodeCustomizer` changed it |
+| `accept-group-id-from` | `[url, document]` | locators whose GroupId claim a chain would honour when a request carries no id. Every join in 0.5.0 carries the id, so the key is validation only today: it refuses startup when it names an unauthenticated locator without `insecure-group-id` |
 | `insecure-group-id` | `false` | allow an unauthenticated locator (`dns-*`, `k8s`, `multicast`) in the list above |
 | `beacon-peer` | empty | PeerId that must have signed any document |
 | `url` | empty | beacon document URLs, comma or space separated |
 | `url-allow-plain` / `url-allow-hosts` / `url-allow-private` | `false` / any / `false` | URL locator guards |
+| `url-allow-unsigned` | `false` | accept a beacon document that carries no signature (the `url` and `document` locators); off, because an unsigned document lets its publisher choose the seeds |
 | `expand-names` | `true` | one endpoint per address of a seed name |
 | `bean-locators-first` | `false` | place bean locators before property locators |
 | `require` | `false` | fail startup, naming the group, when the first locate answers no endpoint and no founding |
@@ -437,7 +438,7 @@ per group under `agentspaces.groups[].bootstrap.*` (a group's set keys win).
 | `dns-srv-scheme` | the node's default | the scheme SRV and Kubernetes endpoints take |
 | `dns-sd-any-group` | `false` | accept any DNS-SD instance, not only the group's own name |
 | `document` | empty | a beacon document as is: a file path or a `classpath:` resource |
-| `k8s.service` / `k8s.namespace` / `k8s.port-name` / `k8s.cluster-domain` | empty / the pod's / empty / `cluster.local` | the headless service whose pods are the seeds |
+| `k8s.service` / `k8s.namespace` / `k8s.port-name` / `k8s.cluster-domain` / `k8s.protocol` | empty / `default` / `aspace` / `cluster.local` / `tcp` | the headless service whose pods are the seeds; the SRV owner name is `_<port-name>._<protocol>.<service>.<namespace>.svc.<cluster-domain>` |
 
 Unchanged and bound by the core starter: `agentspaces.groups[].seeds`,
 `agentspaces.groups[].join`, `join-timeout-millis`, `agentspaces.advertise`,
