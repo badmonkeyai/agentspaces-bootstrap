@@ -55,7 +55,30 @@ public class BootstrapFactory {
         @SuppressWarnings("unchecked")
         Map<String, Object> tree = environment.getProperty("agentspaces", Map.class)
                 .map(m -> (Map<String, Object>) m).orElse(Map.of());
-        return BootstrapTree.bind(tree);
+        return BootstrapTree.bind((Map<String, Object>) resolved(tree, environment));
+    }
+
+    /**
+     * The subtree with its placeholders resolved: a map read whole keeps {@code ${AGENTSPACES_BEACON:}} as text, so
+     * each string leaf goes through the environment's placeholder resolver (an unset variable with an empty default
+     * becomes the empty string the locators treat as unset).
+     */
+    @SuppressWarnings("unchecked")
+    static Object resolved(Object value, Environment environment) {
+        if (value instanceof String text) {
+            return text.contains("${") ? environment.getPlaceholderResolver().resolvePlaceholders(text).orElse("") : text;
+        }
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> out = new java.util.LinkedHashMap<>();
+            map.forEach((k, v) -> out.put(String.valueOf(k), resolved(v, environment)));
+            return out;
+        }
+        if (value instanceof java.util.List<?> list) {
+            java.util.List<Object> out = new java.util.ArrayList<>();
+            list.forEach(v -> out.add(resolved(v, environment)));
+            return out;
+        }
+        return value;
     }
 
     /**

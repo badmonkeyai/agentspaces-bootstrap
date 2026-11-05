@@ -237,4 +237,25 @@ class BootstrapFactoryTest {
                 .hasStackTraceContaining("seeds (nothing configured)")
                 .hasStackTraceContaining("BeaconLocator bean");
     }
+
+    /** A group's bootstrap block read as a map keeps its placeholders as text; the factory resolves each leaf (2026-11-05). */
+    @org.junit.jupiter.api.Test
+    void placeholdersInTheBootstrapSubtreeResolve() {
+        try (io.micronaut.context.ApplicationContext ctx = io.micronaut.context.ApplicationContext.run(java.util.Map.of(
+                "agentspaces.enabled", "false", "my.beacon", "https://beacon.example/doc.json"))) {
+            io.micronaut.context.env.Environment env = ctx.getEnvironment();
+            java.util.Map<String, Object> tree = java.util.Map.of("groups", java.util.List.of(java.util.Map.of("name", "g",
+                    "bootstrap", java.util.Map.of("url", "${my.beacon}", "order", java.util.List.of("seeds", "url"),
+                            "document", "${unset.beacon:}"))));
+            @SuppressWarnings("unchecked")
+            java.util.Map<String, Object> resolved = (java.util.Map<String, Object>) BootstrapFactory.resolved(tree, env);
+            @SuppressWarnings("unchecked")
+            java.util.Map<String, Object> group = (java.util.Map<String, Object>) ((java.util.List<?>) resolved.get("groups")).get(0);
+            @SuppressWarnings("unchecked")
+            java.util.Map<String, Object> bootstrap = (java.util.Map<String, Object>) group.get("bootstrap");
+            org.assertj.core.api.Assertions.assertThat(bootstrap.get("url")).isEqualTo("https://beacon.example/doc.json");
+            org.assertj.core.api.Assertions.assertThat(bootstrap.get("document")).as("an unset variable with an empty default").isEqualTo("");
+            org.assertj.core.api.Assertions.assertThat(bootstrap.get("order")).isEqualTo(java.util.List.of("seeds", "url"));
+        }
+    }
 }
