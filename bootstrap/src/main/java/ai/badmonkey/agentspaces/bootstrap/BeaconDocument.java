@@ -20,15 +20,23 @@ import ai.badmonkey.agentspaces.common.id.PeerId;
 import ai.badmonkey.agentspaces.identity.PeerIdentity;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
+import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.JsonToken;
+import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.deser.std.StdDeserializer;
+import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.fasterxml.jackson.databind.module.SimpleModule;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -43,7 +51,9 @@ import java.util.Optional;
  * parameters. Document-wide: the issuer PeerId, its raw key, the issue time,
  * a time to live in seconds, and the issuer's Ed25519 signature over the
  * canonical bytes (every field but {@code signature}, in declared order, no
- * whitespace, map keys sorted). A reader ignores unknown fields. The document
+ * whitespace, map keys sorted). A signed document arrives as exactly its canonical
+ * JSON, signature last (HLC round seven, 2026-11-08); a reader ignores unknown fields
+ * of an unsigned one and refuses a named field of another type (2026-11-09). The document
  * never carries a content key, a credential, or a membership hint, and the
  * writer refuses parameters by those names.
  */
@@ -69,6 +79,37 @@ public record BeaconDocument(int v,
             .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
             .enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS)
             .disable(SerializationFeature.INDENT_OUTPUT);
+
+    /**
+     * The reader (SPEC v0.1.32 §9.1 and §9.3, 2026-11-09, the owner's rule that a wrong-typed field
+     * is refused in every port): unknown members stay ignored in an unsigned document, and every
+     * member the document names holds its Java type, signed or not. Jackson would coerce a number
+     * or a boolean into a text field, text or a fraction into an integer field, and text into a
+     * wire hint; this reader refuses each of them.
+     */
+    private static final ObjectMapper READER = JsonMapper.builder()
+            .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+            .disable(MapperFeature.ALLOW_COERCION_OF_SCALARS)
+            .disable(DeserializationFeature.ACCEPT_FLOAT_AS_INT)
+            .addModule(new SimpleModule("beacon-document-text").addDeserializer(String.class, new TextOnly()))
+            .build();
+
+    /** A text member from a JSON string alone. */
+    private static final class TextOnly extends StdDeserializer<String> {
+        private static final long serialVersionUID = 1L;
+
+        TextOnly() {
+            super(String.class);
+        }
+
+        @Override
+        public String deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
+            if (p.currentToken() != JsonToken.VALUE_STRING) {
+                return (String) ctxt.reportInputMismatch(this, "a text member holds %s", p.currentToken());
+            }
+            return p.getText();
+        }
+    }
 
     /** One seed. */
     @JsonPropertyOrder({"transport", "address", "priority"})
@@ -151,18 +192,46 @@ public record BeaconDocument(int v,
     }
 
     /**
-     * Parses a document; unknown fields are ignored.
+     * Parses a document. An unsigned document reads leniently in form, with whitespace, any member
+     * order, and unknown members, while each member it names holds its Java type (SPEC v0.1.32
+     * §9.3, 2026-11-09): a group name sent as a number, a ttl sent as text, or a priority sent as
+     * 1.0 refuses the document, signed or not. A document
+     * that carries a signature must arrive as exactly its canonical JSON, {@link #toBytes()} (HLC
+     * round seven, 2026-11-08, owner ruling F3 applied to the beacon document): the signature
+     * covers {@link #canonicalBytes()}, a function of the bytes received less the signature
+     * member, so whitespace, another member order, an unknown member, a duplicate member, another
+     * escape, or a coerced number each refuse the document instead of relabelling it. The
+     * signature and the key must each be the padded standard base64 text of the bytes they
+     * decode to, since the signature lies outside the signed bytes and another text of the same
+     * bytes would otherwise read as the same signed document.
      *
      * @param bytes the JSON
      * @return the document
-     * @throws IOException when the bytes are not a document
+     * @throws IOException when the bytes are not a document, or carry a signature and are not
+     *                     the document's canonical JSON
      */
     public static BeaconDocument parse(byte[] bytes) throws IOException {
-        BeaconDocument document = MAPPER.readValue(bytes, BeaconDocument.class);
+        BeaconDocument document = READER.readValue(bytes, BeaconDocument.class);
         if (document.v() < 1) {
             throw new IOException("not a beacon document: v=" + document.v());
         }
+        if (document.signature() != null && !Arrays.equals(document.toBytes(), bytes)) {
+            throw new IOException("a signed beacon document is not its canonical JSON");
+        }
+        if (document.signature() != null
+                && !(canonicalBase64(document.signature()) && canonicalBase64(document.issuerKey()))) {
+            throw new IOException("a signed beacon document's signature or key is not canonical base64");
+        }
         return document;
+    }
+
+    /** Whether the text is absent or the padded standard base64 encoding of what it decodes to. */
+    private static boolean canonicalBase64(String text) {
+        try {
+            return text == null || Base64.getEncoder().encodeToString(Base64.getDecoder().decode(text)).equals(text);
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
     }
 
     /**

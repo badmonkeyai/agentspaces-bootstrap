@@ -210,8 +210,13 @@ class LocatorsTest {
         assertThat(parsed.groupById("aspace://" + groupId)).isPresent();
         assertThat(parsed.groupById(groupId)).isPresent();
         assertThat(parsed.groupByName("research-fleet")).isPresent();
-        BeaconDocument unknownFields = BeaconDocument.parse(
-                document.toJson().replace("\"v\":1", "\"v\":1,\"future\":{\"x\":1}").getBytes(StandardCharsets.UTF_8));
+        // HLC round seven, 2026-11-08: a signed document arrives canonical, so an unknown field
+        // refuses it; an unsigned one still reads with the field ignored
+        assertThatThrownBy(() -> BeaconDocument.parse(document.toJson()
+                .replace("\"v\":1", "\"v\":1,\"future\":{\"x\":1}").getBytes(StandardCharsets.UTF_8)))
+                .isInstanceOf(IOException.class);
+        BeaconDocument unknownFields = BeaconDocument.parse(document.withSignature(null).toJson()
+                .replace("\"v\":1", "\"v\":1,\"future\":{\"x\":1}").getBytes(StandardCharsets.UTF_8));
         assertThat(unknownFields.groups()).hasSize(1);
         assertThatThrownBy(() -> new BeaconDocument.Group("g", null, null, List.of(), null, null,
                 Map.of("content-key", "x"), null)).isInstanceOf(IllegalArgumentException.class);

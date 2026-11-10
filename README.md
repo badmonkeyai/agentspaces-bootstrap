@@ -139,7 +139,7 @@ A group that joins by id needs something to ask: a seed, a locator in its `order
 1. It picks the locators that apply to that group. A locator you define as a bean can limit itself to one group.
 2. By default it asks all of them at once, each with its own deadline (`timeout`, 3 seconds). A locator that fails or times out contributes nothing, and the others carry on.
 3. It merges the answers in chain order, so the first locator's addresses rank highest, and it removes duplicates.
-4. It keeps the first founding document it finds. It would accept a group id claim only from the locators you named in `accept-group-id-from`, and only for a request without an id; every join in 0.5.0 carries its id, so the claim is never used today.
+4. It keeps the first founding document it finds. It would accept a group id claim only from the locators you named in `accept-group-id-from`, and only for a request without an id; every join in 0.6.0 carries its id, so the claim is never used today.
 5. It expands names into addresses last.
 6. It sets the answer's lifetime to the shortest lifetime among the locators that contributed.
 
@@ -177,7 +177,7 @@ A chain suggests where to dial. The peer decides what to believe:
 
 - **Addresses are only dialed.** Every connection goes through the same handshake, signature verification, and admission policy as a connection from any stranger.
 - **A founding is verified when there is one.** When a peer joins by id, it checks the founding against the id it was configured with. A group started from a text has no founding, so the peer relies on the handshake, the signature checks, and the group's admission policy, as it does for every connection.
-- **A group id claim needs a named source, and is not used yet.** A locator can say what it believes the group id is. The chain would accept that claim only from the locators listed in `accept-group-id-from` (default `url` and `document`), and only for a request that carries no id. Every join in 0.5.0 carries the id it was configured with, so in this release the key does one thing: it refuses startup when it names an unauthenticated locator (`dns-*`, `k8s`, `multicast`) without `insecure-group-id: true`. A join by name, where DNS or a document supplies the id, is a roadmap item.
+- **A group id claim needs a named source, and is not used yet.** A locator can say what it believes the group id is. The chain would accept that claim only from the locators listed in `accept-group-id-from` (default `url` and `document`), and only for a request that carries no id. Every join in 0.6.0 carries the id it was configured with, so in this release the key does one thing: it refuses startup when it names an unauthenticated locator (`dns-*`, `k8s`, `multicast`) without `insecure-group-id: true`. A join by name, where DNS or a document supplies the id, is a roadmap item.
 - **Plain Java reaches the locators, not the starter's checks.** A `PeerNode` user without Spring or Micronaut builds locators from this library, composes a `BootstrapChain` (or calls `ChainComposer.compose` with a `BootstrapSettings`), and passes it to `joinGroup`. The startup refusal for a chain with nothing to ask, the `founding-document` decoding, the `join-credential` hint, and the "text-founded group" advice are the hosts' work; plain Java asks `locator.canLocate()` itself and gets a `FoundingTimeoutException` with the counts when a join runs out.
 - **A document must be signed.** A beacon signs the document it serves, and a reader refuses one that carries no signature unless `url-allow-unsigned` is set, because an unsigned document lets whoever published it choose the seeds. `beacon-peer` names the PeerId that must have signed any document. The `url` locator also fetches over HTTPS by default, caps the size, follows at most two redirects on the same host, and refuses private addresses unless `url-allow-private` allows them.
 
@@ -219,10 +219,10 @@ A **host** is the framework that creates your peer: the Spring Boot starter (`ag
 
 | Artifact | What | Depends on |
 |---|---|---|
-| `ai.badmonkey.agentspaces:agentspaces-bootstrap:0.5.0` | the library: `DnsResolver` and the JNDI resolver, `SrvLocator`, `DnsSdLocator`, `TxtLocator`, `UrlLocator`, `K8sLocator`, `StaticDocumentLocator`, `DomainFinder`, `BeaconDocument`, `BootstrapSettings`, `LocatorAssembly` | `agentspaces-api`, `-common`, `-identity`, Jackson |
-| `ai.badmonkey.agentspaces:agentspaces-bootstrap-chain:0.5.0` | `ChainComposer`, the composition both hosts share, and `BootstrapTree`, the nested-map binding of the keys | the library, `agentspaces-peering` (`BootstrapChain`), the core autoconfigure jar (the `BootstrapChainFactory` seam; it carries no Spring class) |
-| `ai.badmonkey.agentspaces:agentspaces-bootstrap-spring-boot-autoconfigure:0.5.0` | `BootstrapProperties`, `BootstrapAutoConfiguration` | `chain`, Spring Boot 4.1 |
-| `ai.badmonkey.agentspaces:agentspaces-bootstrap-micronaut:0.5.0` | `BootstrapFactory` | `chain`, Micronaut 5.2 |
+| `ai.badmonkey.agentspaces:agentspaces-bootstrap:0.6.0` | the library: `DnsResolver` and the JNDI resolver, `SrvLocator`, `DnsSdLocator`, `TxtLocator`, `UrlLocator`, `K8sLocator`, `StaticDocumentLocator`, `DomainFinder`, `BeaconDocument`, `BootstrapSettings`, `LocatorAssembly` | `agentspaces-api`, `-common`, `-identity`, Jackson |
+| `ai.badmonkey.agentspaces:agentspaces-bootstrap-chain:0.6.0` | `ChainComposer`, the composition both hosts share, and `BootstrapTree`, the nested-map binding of the keys | the library, `agentspaces-peering` (`BootstrapChain`), the core autoconfigure jar (the `BootstrapChainFactory` seam; it carries no Spring class) |
+| `ai.badmonkey.agentspaces:agentspaces-bootstrap-spring-boot-autoconfigure:0.6.0` | `BootstrapProperties`, `BootstrapAutoConfiguration` | `chain`, Spring Boot 4.1 |
+| `ai.badmonkey.agentspaces:agentspaces-bootstrap-micronaut:0.6.0` | `BootstrapFactory` | `chain`, Micronaut 5.2 |
 
 An application adds the host module beside the core starter (`agentspaces-spring-boot-starter`)
 or the core Micronaut factory (`agentspaces-micronaut`); the library and the
@@ -232,7 +232,7 @@ chain come transitively.
 <dependency>
   <groupId>ai.badmonkey.agentspaces</groupId>
   <artifactId>agentspaces-bootstrap-spring-boot-autoconfigure</artifactId>
-  <version>0.5.0</version>
+  <version>0.6.0</version>
 </dependency>
 ```
 
@@ -424,7 +424,7 @@ per group under `agentspaces.groups[].bootstrap.*` (a group's set keys win).
 | `first-wins` | `false` | stop at the first locator with endpoints |
 | `timeout` | `PT3S` | per locator |
 | `refresh-min` / `refresh-max` | unset | re-ask pacing on an empty view (the chain's `LocatePolicy`); unset falls through to the node's own pacing, 30 s and 10 min unless a `PeerNodeCustomizer` changed it |
-| `accept-group-id-from` | `[url, document]` | locators whose GroupId claim a chain would honour when a request carries no id. Every join in 0.5.0 carries the id, so the key is validation only today: it refuses startup when it names an unauthenticated locator without `insecure-group-id` |
+| `accept-group-id-from` | `[url, document]` | locators whose GroupId claim a chain would honour when a request carries no id. Every join in 0.6.0 carries the id, so the key is validation only today: it refuses startup when it names an unauthenticated locator without `insecure-group-id` |
 | `insecure-group-id` | `false` | allow an unauthenticated locator (`dns-*`, `k8s`, `multicast`) in the list above |
 | `beacon-peer` | empty | PeerId that must have signed any document |
 | `url` | empty | beacon document URLs, comma or space separated |
@@ -451,7 +451,7 @@ mvn clean install
 ```
 
 Java 21. The tests start real peers on loopback ports; `agentspaces-micronaut`
-0.5.0 (the core's Micronaut host) must be in the local repository for the
+0.6.0 (the core's Micronaut host) must be in the local repository for the
 Micronaut module's end-to-end test.
 
 ## Releasing
